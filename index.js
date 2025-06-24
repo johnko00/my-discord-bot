@@ -2,14 +2,15 @@
 const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
 const { REST } = require('@discordjs/rest');
 const { Routes } = require('discord-api-types/v10');
+const express = require('express');
 require('dotenv').config(); // .envファイルを読み込み
 
 // ボットクライアントの作成
 const client = new Client({
     intents: [
-        GatewayIntentBits.Guilds,           // サーバー情報の取得
-        GatewayIntentBits.GuildMessages,    // メッセージの読み取り
-        GatewayIntentBits.MessageContent    // メッセージ内容の読み取り
+        GatewayIntentBits.Guilds, // サーバー情報の取得
+        GatewayIntentBits.GuildMessages, // メッセージの読み取り
+        GatewayIntentBits.MessageContent // メッセージ内容の読み取り
     ]
 });
 
@@ -37,26 +38,32 @@ const commands = [
     }
 ];
 
-// ボット起動時の処理
+// ボット起動時の処理（統合版）
 client.once('ready', async () => {
     console.log(`✅ ${client.user.tag} がオンラインになりました！`);
     console.log(`🔗 ${client.guilds.cache.size}個のサーバーに接続中`);
-    
+
     // スラッシュコマンドを登録
     const rest = new REST({ version: '10' }).setToken(process.env.BOT_TOKEN);
     
     try {
-        console.log('🔄 スラッシュコマンドを登録中...');
+        console.log('🗑️ 古いコマンドを削除中...');
+        // 全てのグローバルコマンドを削除
+        await rest.put(
+            Routes.applicationCommands(client.user.id),
+            { body: [] }
+        );
+        console.log('✅ 古いコマンド削除完了！');
         
-        // すべてのサーバーにコマンドを登録
+        console.log('🔄 新しいコマンドを登録中...');
+        // 新しいコマンドを登録
         await rest.put(
             Routes.applicationCommands(client.user.id),
             { body: commands }
         );
-        
-        console.log('✅ スラッシュコマンドの登録完了！');
+        console.log('✅ 新しいコマンド登録完了！');
     } catch (error) {
-        console.error('❌ コマンド登録エラー:', error);
+        console.error('❌ コマンド処理エラー:', error);
     }
 });
 
@@ -74,16 +81,16 @@ client.on('interactionCreate', async interaction => {
                 const ping = client.ws.ping;
                 await interaction.reply(`🏓 Pong! レイテンシ: ${ping}ms`);
                 break;
-                
+
             case 'hello':
                 // 挨拶コマンド
                 const user = interaction.options.getUser('user');
-                const message = user 
-                    ? `👋 こんにちは、${user}さん！` 
+                const message = user
+                    ? `👋 こんにちは、${user}さん！`
                     : `👋 こんにちは、${interaction.user}さん！`;
                 await interaction.reply(message);
                 break;
-                
+
             case 'serverinfo':
                 // サーバー情報を表示
                 const guild = interaction.guild;
@@ -99,16 +106,14 @@ client.on('interactionCreate', async interaction => {
                         { name: '📺 チャンネル数', value: guild.channels.cache.size.toString(), inline: true }
                     )
                     .setTimestamp();
-                    
                 await interaction.reply({ embeds: [embed] });
                 break;
-                
+
             default:
                 await interaction.reply('❌ 未知のコマンドです。');
         }
     } catch (error) {
         console.error('コマンド実行エラー:', error);
-        
         // エラーレスポンス
         if (interaction.replied) {
             await interaction.followUp('❌ コマンドの実行中にエラーが発生しました。');
@@ -132,65 +137,7 @@ process.on('unhandledRejection', error => {
     console.error('❌ 処理されていないPromise拒否:', error);
 });
 
-// ボットにログイン
-console.log('🚀 ボットを起動中...');
-client.login(process.env.BOT_TOKEN);
-
-
-// ボット起動時の処理を以下に変更
-client.once('ready', async () => {
-    console.log(`✅ ${client.user.tag} がオンラインになりました！`);
-    
-    const rest = new REST({ version: '10' }).setToken(process.env.BOT_TOKEN);
-    
-    try {
-        console.log('🗑️ 古いコマンドを削除中...');
-        
-        // 全てのグローバルコマンドを削除
-        await rest.put(
-            Routes.applicationCommands(client.user.id),
-            { body: [] }
-        );
-        
-        console.log('✅ 古いコマンド削除完了！');
-        console.log('🔄 新しいコマンドを登録中...');
-        
-        // 新しいコマンドを登録
-        await rest.put(
-            Routes.applicationCommands(client.user.id),
-            { body: commands }
-        );
-        
-        console.log('✅ 新しいコマンド登録完了！');
-    } catch (error) {
-        console.error('❌ コマンド処理エラー:', error);
-    }
-});
-
 // Render用のWebサーバー（ポートバインド対応）
-const express = require('express');
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-app.get('/', (req, res) => {
-    res.json({
-        status: 'Bot is running!',
-        botName: client.user?.tag || 'Bot',
-        servers: client.guilds.cache.size,
-        uptime: process.uptime()
-    });
-});
-
-app.get('/health', (req, res) => {
-    res.json({ status: 'OK', timestamp: new Date().toISOString() });
-});
-
-app.listen(PORT, () => {
-    console.log(`🌐 Server running on port ${PORT}`);
-});
-
-// Render用のWebサーバー（ポートバインド対応）
-const express = require('express');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -208,13 +155,17 @@ app.get('/health', (req, res) => {
 });
 
 // サーバー起動（エラーハンドリング付き）
-const server = app.listen(PORT, () => {
+app.listen(PORT, () => {
     console.log(`🌐 Server running on port ${PORT}`);
 }).on('error', (err) => {
     if (err.code === 'EADDRINUSE') {
         console.log(`⚠️ Port ${PORT} is already in use. Trying port ${PORT + 1}...`);
-        server.listen(PORT + 1);
+        app.listen(PORT + 1);
     } else {
         console.error('❌ Server error:', err);
     }
 });
+
+// ボットにログイン
+console.log('🚀 ボットを起動中...');
+client.login(process.env.BOT_TOKEN);
