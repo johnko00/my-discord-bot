@@ -1,0 +1,25 @@
+{
+  "name": "my-discord-bot",
+  "version": "1.0.0",
+  "description": "My first Discord bot",
+  "main": "index.js",
+  "engines": {
+    "node": "18.x"
+  },
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "keywords": ["discord", "bot"],
+  "author": "やすかわ",
+  "license": "MIT",
+  "dependencies": {
+    "discord.js": "^14.14.1",
+    "@discordjs/rest": "^2.2.0",
+    "discord-api-types": "^0.37.83",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  }
+}
