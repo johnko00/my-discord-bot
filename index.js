@@ -166,3 +166,25 @@ client.once('ready', async () => {
         console.error('❌ コマンド処理エラー:', error);
     }
 });
+
+// Render用のWebサーバー（ポートバインド対応）
+const express = require('express');
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.get('/', (req, res) => {
+    res.json({
+        status: 'Bot is running!',
+        botName: client.user?.tag || 'Bot',
+        servers: client.guilds.cache.size,
+        uptime: process.uptime()
+    });
+});
+
+app.get('/health', (req, res) => {
+    res.json({ status: 'OK', timestamp: new Date().toISOString() });
+});
+
+app.listen(PORT, () => {
+    console.log(`🌐 Server running on port ${PORT}`);
+});
