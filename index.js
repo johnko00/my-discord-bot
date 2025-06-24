@@ -188,3 +188,33 @@ app.get('/health', (req, res) => {
 app.listen(PORT, () => {
     console.log(`🌐 Server running on port ${PORT}`);
 });
+
+// Render用のWebサーバー（ポートバインド対応）
+const express = require('express');
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.get('/', (req, res) => {
+    res.json({
+        status: 'Bot is running!',
+        botName: client.user?.tag || 'Bot',
+        servers: client.guilds.cache.size,
+        uptime: process.uptime()
+    });
+});
+
+app.get('/health', (req, res) => {
+    res.json({ status: 'OK', timestamp: new Date().toISOString() });
+});
+
+// サーバー起動（エラーハンドリング付き）
+const server = app.listen(PORT, () => {
+    console.log(`🌐 Server running on port ${PORT}`);
+}).on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+        console.log(`⚠️ Port ${PORT} is already in use. Trying port ${PORT + 1}...`);
+        server.listen(PORT + 1);
+    } else {
+        console.error('❌ Server error:', err);
+    }
+});
