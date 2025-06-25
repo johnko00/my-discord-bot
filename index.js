@@ -48,14 +48,12 @@ const commands = [
     }
 ];
 
-// TRPGシナリオの選択肢（サンプル - 実際のデータベースから取得することも可能）
-const TRPG_SCENARIOS = [
-    { label: 'クトゥルフ神話TRPG', value: 'cthulhu' },
-    { label: 'ソード・ワールド2.5', value: 'sw25' },
-    { label: 'ダンジョンズ&ドラゴンズ', value: 'dnd' },
-    { label: 'シノビガミ', value: 'shinobigami' },
-    { label: 'インセイン', value: 'insane' },
-    { label: 'その他', value: 'other' }
+// メンバー選択肢
+const MEMBERS = [
+    { label: 'やす', value: 'yasu', emoji: '🎮' },
+    { label: 'うお', value: 'uo', emoji: '🐟' },
+    { label: 'カン', value: 'kan', emoji: '🔥' },
+    { label: 'ザク', value: 'zaku', emoji: '🤖' }
 ];
 
 // ボット起動時の処理
@@ -139,30 +137,30 @@ client.on('interactionCreate', async interaction => {
                             .setRequired(true)
                             .setMaxLength(100);
 
-                        // 日付入力
+                        // 日付入力（より柔軟に）
                         const dateInput = new TextInputBuilder()
                             .setCustomId('session_date')
-                            .setLabel('開催日（YYYY-MM-DD形式）')
+                            .setLabel('開催日（複数形式対応）')
                             .setStyle(TextInputStyle.Short)
-                            .setPlaceholder('例: 2025-06-25')
+                            .setPlaceholder('例: 2025-06-25, 06/25, 明日, 来週土曜日')
                             .setRequired(true)
-                            .setMaxLength(10);
+                            .setMaxLength(20);
 
-                        // GM入力
+                        // GM入力（参考用）
                         const gmInput = new TextInputBuilder()
                             .setCustomId('gm_names')
-                            .setLabel('GM（複数の場合はカンマ区切り）')
+                            .setLabel('GM（参考・後で選択メニューで再選択）')
                             .setStyle(TextInputStyle.Short)
-                            .setPlaceholder('例: やすかわ, 田中')
-                            .setRequired(true)
+                            .setPlaceholder('例: やす, うお')
+                            .setRequired(false)
                             .setMaxLength(200);
 
-                        // PL入力
+                        // PL入力（参考用）
                         const plInput = new TextInputBuilder()
                             .setCustomId('pl_names')
-                            .setLabel('PL（複数の場合はカンマ区切り）')
+                            .setLabel('PL（参考・後で選択メニューで再選択）')
                             .setStyle(TextInputStyle.Paragraph)
-                            .setPlaceholder('例: 佐藤, 鈴木, 高橋, 伊藤')
+                            .setPlaceholder('例: カン, ザク')
                             .setRequired(false)
                             .setMaxLength(500);
 
@@ -208,22 +206,88 @@ client.on('interactionCreate', async interaction => {
 
                 const tableName = interaction.fields.getTextInputValue('table_name');
                 const sessionDate = interaction.fields.getTextInputValue('session_date');
-                const gmNames = interaction.fields.getTextInputValue('gm_names');
+                const gmNames = interaction.fields.getTextInputValue('gm_names') || '';
                 const plNames = interaction.fields.getTextInputValue('pl_names') || '';
 
-                // 日付形式の検証
-                if (!/^\d{4}-\d{2}-\d{2}$/.test(sessionDate)) {
-                    await interaction.editReply('❌ 日付の形式が正しくありません。YYYY-MM-DD形式で入力してください。');
+                // 日付を標準形式に変換する関数
+                function parseDate(dateInput) {
+                    const today = new Date();
+                    const inputLower = dateInput.toLowerCase().trim();
+                    
+                    // YYYY-MM-DD形式の場合
+                    if (/^\d{4}-\d{2}-\d{2}$/.test(dateInput)) {
+                        return dateInput;
+                    }
+                    
+                    // MM/DD形式の場合
+                    if (/^\d{1,2}\/\d{1,2}$/.test(dateInput)) {
+                        const [month, day] = dateInput.split('/');
+                        const year = today.getFullYear();
+                        return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+                    }
+                    
+                    // 相対日付の処理
+                    if (inputLower === '今日' || inputLower === 'today') {
+                        return today.toISOString().split('T')[0];
+                    }
+                    
+                    if (inputLower === '明日' || inputLower === 'tomorrow') {
+                        const tomorrow = new Date(today);
+                        tomorrow.setDate(tomorrow.getDate() + 1);
+                        return tomorrow.toISOString().split('T')[0];
+                    }
+                    
+                    if (inputLower.includes('来週')) {
+                        const nextWeek = new Date(today);
+                        nextWeek.setDate(nextWeek.getDate() + 7);
+                        return nextWeek.toISOString().split('T')[0];
+                    }
+                    
+                    // その他の場合はそのまま返す
+                    return dateInput;
+                }
+
+                const parsedDate = parseDate(sessionDate);
+
+                // 日付形式の検証（より柔軟に）
+                if (!/^\d{4}-\d{2}-\d{2}$/.test(parsedDate)) {
+                    await interaction.editReply(`❌ 日付の形式を認識できませんでした。以下の形式で入力してください：
+• YYYY-MM-DD (例: 2025-06-25)
+• MM/DD (例: 06/25)
+• 今日、明日、来週`);
                     return;
                 }
 
-                // TRPGシナリオ選択メニューを表示
-                const scenarioSelect = new StringSelectMenuBuilder()
-                    .setCustomId('scenario_select')
-                    .setPlaceholder('TRPGシナリオを選択してください')
-                    .addOptions(TRPG_SCENARIOS);
+                // GM選択メニューを表示
+                const gmSelect = new StringSelectMenuBuilder()
+                    .setCustomId('gm_select')
+                    .setPlaceholder('🎮 GMを選択してください（複数選択可）')
+                    .setMinValues(1)
+                    .setMaxValues(4)
+                    .addOptions(
+                        MEMBERS.map(member => ({
+                            label: member.label,
+                            value: member.value,
+                            emoji: member.emoji
+                        }))
+                    );
 
-                const selectRow = new ActionRowBuilder().addComponents(scenarioSelect);
+                // PL選択メニューを表示
+                const plSelect = new StringSelectMenuBuilder()
+                    .setCustomId('pl_select')
+                    .setPlaceholder('👥 PLを選択してください（複数選択可・任意）')
+                    .setMinValues(0)
+                    .setMaxValues(4)
+                    .addOptions(
+                        MEMBERS.map(member => ({
+                            label: member.label,
+                            value: member.value,
+                            emoji: member.emoji
+                        }))
+                    );
+
+                const gmSelectRow = new ActionRowBuilder().addComponents(gmSelect);
+                const plSelectRow = new ActionRowBuilder().addComponents(plSelect);
 
                 // 確認ボタン
                 const confirmButton = new ButtonBuilder()
@@ -238,23 +302,24 @@ client.on('interactionCreate', async interaction => {
 
                 const buttonRow = new ActionRowBuilder().addComponents(confirmButton, cancelButton);
 
-                // 確認用Embed
+                // 確認用Embed（パース済み日付も表示）
                 const confirmEmbed = new EmbedBuilder()
                     .setColor(0x0099ff)
                     .setTitle('🎲 TRPG卓情報確認')
                     .addFields(
                         { name: '🏷️ 卓名', value: tableName, inline: true },
-                        { name: '📅 開催日', value: sessionDate, inline: true },
+                        { name: '📅 開催日', value: `${parsedDate}${sessionDate !== parsedDate ? ` (${sessionDate})` : ''}`, inline: true },
                         { name: '🎮 GM', value: gmNames, inline: true },
                         { name: '👥 PL', value: plNames || '未設定', inline: false }
                     )
                     .setFooter({ text: 'TRPGシナリオを選択して「Notionに追加」をクリックしてください' });
 
-                // 一時的にデータを保存（実際の実装では、より堅牢な方法を使用することを推奨）
+                // 一時的にデータを保存（パース済み日付を使用）
                 global.tempNotionData = {
                     userId: interaction.user.id,
                     tableName,
-                    sessionDate,
+                    sessionDate: parsedDate,  // パース済みの日付を使用
+                    originalDate: sessionDate, // 元の入力も保存
                     gmNames: gmNames.split(',').map(name => name.trim()),
                     plNames: plNames ? plNames.split(',').map(name => name.trim()) : []
                 };
@@ -273,20 +338,34 @@ client.on('interactionCreate', async interaction => {
 
     // セレクトメニューの処理
     if (interaction.isStringSelectMenu()) {
-        if (interaction.customId === 'scenario_select') {
-            const selectedScenario = interaction.values[0];
-            const scenarioLabel = TRPG_SCENARIOS.find(s => s.value === selectedScenario)?.label || 'その他';
+        if (interaction.customId === 'gm_select') {
+            const selectedGm = interaction.values;
+            const gmLabels = selectedGm.map(value => MEMBERS.find(m => m.value === value)?.label).join(', ');
             
             // グローバルデータに追加
             if (global.tempNotionData && global.tempNotionData.userId === interaction.user.id) {
-                global.tempNotionData.scenario = {
-                    value: selectedScenario,
-                    label: scenarioLabel
-                };
+                global.tempNotionData.selectedGm = selectedGm;
             }
 
             await interaction.reply({ 
-                content: `✅ TRPGシナリオ「${scenarioLabel}」を選択しました。`,
+                content: `✅ GM「${gmLabels}」を選択しました。`,
+                ephemeral: true 
+            });
+        }
+
+        if (interaction.customId === 'pl_select') {
+            const selectedPl = interaction.values;
+            const plLabels = selectedPl.length > 0 
+                ? selectedPl.map(value => MEMBERS.find(m => m.value === value)?.label).join(', ')
+                : 'なし';
+            
+            // グローバルデータに追加
+            if (global.tempNotionData && global.tempNotionData.userId === interaction.user.id) {
+                global.tempNotionData.selectedPl = selectedPl;
+            }
+
+            await interaction.reply({ 
+                content: `✅ PL「${plLabels}」を選択しました。`,
                 ephemeral: true 
             });
         }
@@ -304,10 +383,19 @@ client.on('interactionCreate', async interaction => {
                     return;
                 }
 
-                if (!tempData.scenario) {
-                    await interaction.editReply('❌ TRPGシナリオを選択してください。');
+                if (!tempData.selectedGm || tempData.selectedGm.length === 0) {
+                    await interaction.editReply('❌ GMを選択してください。');
                     return;
                 }
+
+                // 選択されたメンバー名を取得
+                const selectedGmNames = tempData.selectedGm.map(value => 
+                    MEMBERS.find(m => m.value === value)?.label
+                ).filter(Boolean);
+
+                const selectedPlNames = tempData.selectedPl.map(value => 
+                    MEMBERS.find(m => m.value === value)?.label
+                ).filter(Boolean);
 
                 // Discord情報を取得
                 const channel = interaction.channel;
@@ -317,8 +405,41 @@ client.on('interactionCreate', async interaction => {
                     threadId: channel.isThread() ? channel.id : null,
                     threadName: channel.isThread() ? channel.name : null,
                     parentChannelId: channel.isThread() ? channel.parentId : channel.id,
-                    parentChannelName: channel.isThread() ? channel.parent?.name : channel.name
+                    parentChannelName: channel.isThread() ? channel.parent?.name : channel.name,
+                    threadUrl: channel.isThread() ? `https://discord.com/channels/${channel.guildId}/${channel.id}` : null
                 };
+
+                console.log('📍 Discord情報:', channelInfo);
+
+                // スレッドの場合、別のDBで対応するページを検索
+                let relatedThreadPage = null;
+                if (channelInfo.threadUrl) {
+                    try {
+                        console.log('🔍 スレッドURLで別DBを検索中...', channelInfo.threadUrl);
+                        
+                        const threadSearchResponse = await notion.databases.query({
+                            database_id: process.env.NOTION_THREAD_DATABASE_ID,
+                            filter: {
+                                property: "スレッドURL", // プロパティ名は実際の名前に変更してください
+                                rich_text: {
+                                    contains: channelInfo.threadUrl
+                                }
+                            }
+                        });
+
+                        console.log(`🔍 検索結果: ${threadSearchResponse.results.length}件`);
+
+                        if (threadSearchResponse.results.length > 0) {
+                            relatedThreadPage = threadSearchResponse.results[0];
+                            console.log('✅ 関連スレッドページ発見:', relatedThreadPage.id);
+                        } else {
+                            console.log('⚠️ 関連スレッドページが見つかりませんでした');
+                        }
+                    } catch (searchError) {
+                        console.error('❌ スレッド検索エラー:', searchError);
+                        // エラーがあっても処理を続行
+                    }
+                }
 
                 // Notionにページを作成
                 const notionProperties = {
@@ -337,12 +458,22 @@ client.on('interactionCreate', async interaction => {
                         }
                     },
                     'GM': {
-                        multi_select: tempData.gmNames.map(name => ({ name }))
+                        multi_select: selectedGmNames.map(name => ({ name }))
                     },
                     'PL': {
-                        multi_select: tempData.plNames.map(name => ({ name }))
+                        multi_select: selectedPlNames.map(name => ({ name }))
                     }
                 };
+
+                // 関連スレッドページがある場合、リレーションを追加
+                if (relatedThreadPage) {
+                    notionProperties['TRPGシナリオ'] = {
+                        relation: [
+                            { id: relatedThreadPage.id }
+                        ]
+                    };
+                    console.log('🔗 リレーション設定:', relatedThreadPage.id);
+                }
 
                 // Discord情報をプロパティに追加（フィールドが存在する場合のみ）
                 if (channelInfo.channelId) {
@@ -400,7 +531,7 @@ client.on('interactionCreate', async interaction => {
                     properties: notionProperties
                 });
 
-                // 成功Embed（Discord情報も表示）
+                // 成功Embed（関連情報も表示）
                 const successEmbed = new EmbedBuilder()
                     .setColor(0x00ff00)
                     .setTitle('✅ Notionに追加完了！')
@@ -408,9 +539,8 @@ client.on('interactionCreate', async interaction => {
                     .addFields(
                         { name: '🏷️ 卓名', value: tempData.tableName, inline: true },
                         { name: '📅 開催日', value: tempData.sessionDate, inline: true },
-                        { name: '🎮 シナリオ', value: tempData.scenario.label, inline: true },
-                        { name: '🎮 GM', value: tempData.gmNames.join(', '), inline: true },
-                        { name: '👥 PL', value: tempData.plNames.join(', ') || '未設定', inline: true },
+                        { name: '🎮 GM', value: selectedGmNames.join(', '), inline: true },
+                        { name: '👥 PL', value: selectedPlNames.join(', ') || 'なし', inline: true },
                         { name: '📍 チャンネル', value: channelInfo.parentChannelName, inline: true }
                     );
 
@@ -418,6 +548,21 @@ client.on('interactionCreate', async interaction => {
                 if (channelInfo.threadName) {
                     successEmbed.addFields(
                         { name: '🧵 スレッド', value: channelInfo.threadName, inline: true }
+                    );
+                }
+
+                // リレーション情報があれば追加
+                if (relatedThreadPage) {
+                    const relationTitle = relatedThreadPage.properties?.Name?.title?.[0]?.text?.content 
+                        || relatedThreadPage.properties?.タイトル?.title?.[0]?.text?.content 
+                        || 'シナリオページ';
+                    
+                    successEmbed.addFields(
+                        { name: '🔗 リレーション', value: `${relationTitle} にリンク済み`, inline: true }
+                    );
+                } else if (channelInfo.threadUrl) {
+                    successEmbed.addFields(
+                        { name: '⚠️ リレーション', value: '対応するシナリオページが見つかりませんでした', inline: true }
                     );
                 }
 
