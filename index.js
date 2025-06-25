@@ -202,7 +202,7 @@ client.on('interactionCreate', async interaction => {
     if (interaction.isModalSubmit()) {
         if (interaction.customId === 'notion_trpg_modal') {
             try {
-                await interaction.deferReply({ ephemeral: true });
+                await interaction.deferReply({ flags: 64 }); // ephemeral flag
 
                 const tableName = interaction.fields.getTextInputValue('table_name');
                 const sessionDate = interaction.fields.getTextInputValue('session_date');
@@ -349,7 +349,7 @@ client.on('interactionCreate', async interaction => {
 
             await interaction.reply({ 
                 content: `✅ GM「${gmLabels}」を選択しました。`,
-                ephemeral: true 
+                flags: 64 // ephemeral flag
             });
         }
 
@@ -366,7 +366,7 @@ client.on('interactionCreate', async interaction => {
 
             await interaction.reply({ 
                 content: `✅ PL「${plLabels}」を選択しました。`,
-                ephemeral: true 
+                flags: 64 // ephemeral flag
             });
         }
     }
@@ -375,7 +375,7 @@ client.on('interactionCreate', async interaction => {
     if (interaction.isButton()) {
         if (interaction.customId === 'confirm_notion_add') {
             try {
-                await interaction.deferReply({ ephemeral: true });
+                await interaction.deferReply({ flags: 64 }); // ephemeral flag
 
                 const tempData = global.tempNotionData;
                 if (!tempData || tempData.userId !== interaction.user.id) {
@@ -585,7 +585,7 @@ client.on('interactionCreate', async interaction => {
             delete global.tempNotionData;
             await interaction.reply({ 
                 content: '❌ キャンセルしました。', 
-                ephemeral: true 
+                flags: 64 // ephemeral flag
             });
         }
     }
