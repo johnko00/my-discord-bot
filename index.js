@@ -122,56 +122,69 @@ client.on('interactionCreate', async interaction => {
                     break;
 
                 case 'add-notion':
-                    // フォーム表示
-                    const modal = new ModalBuilder()
-                        .setCustomId('notion_trpg_modal')
-                        .setTitle('🎲 TRPG卓情報をNotionに追加');
+                    try {
+                        console.log('🎲 add-notion コマンドが実行されました');
+                        
+                        // フォーム表示
+                        const modal = new ModalBuilder()
+                            .setCustomId('notion_trpg_modal')
+                            .setTitle('🎲 TRPG卓情報をNotionに追加');
 
-                    // 卓名入力
-                    const tableNameInput = new TextInputBuilder()
-                        .setCustomId('table_name')
-                        .setLabel('卓名')
-                        .setStyle(TextInputStyle.Short)
-                        .setPlaceholder('例: 第1回クトゥルフ卓')
-                        .setRequired(true)
-                        .setMaxLength(100);
+                        // 卓名入力
+                        const tableNameInput = new TextInputBuilder()
+                            .setCustomId('table_name')
+                            .setLabel('卓名')
+                            .setStyle(TextInputStyle.Short)
+                            .setPlaceholder('例: 第1回クトゥルフ卓')
+                            .setRequired(true)
+                            .setMaxLength(100);
 
-                    // 日付入力
-                    const dateInput = new TextInputBuilder()
-                        .setCustomId('session_date')
-                        .setLabel('開催日（YYYY-MM-DD形式）')
-                        .setStyle(TextInputStyle.Short)
-                        .setPlaceholder('例: 2025-06-25')
-                        .setRequired(true)
-                        .setMaxLength(10);
+                        // 日付入力
+                        const dateInput = new TextInputBuilder()
+                            .setCustomId('session_date')
+                            .setLabel('開催日（YYYY-MM-DD形式）')
+                            .setStyle(TextInputStyle.Short)
+                            .setPlaceholder('例: 2025-06-25')
+                            .setRequired(true)
+                            .setMaxLength(10);
 
-                    // GM入力
-                    const gmInput = new TextInputBuilder()
-                        .setCustomId('gm_names')
-                        .setLabel('GM（複数の場合はカンマ区切り）')
-                        .setStyle(TextInputStyle.Short)
-                        .setPlaceholder('例: やすかわ, 田中')
-                        .setRequired(true)
-                        .setMaxLength(200);
+                        // GM入力
+                        const gmInput = new TextInputBuilder()
+                            .setCustomId('gm_names')
+                            .setLabel('GM（複数の場合はカンマ区切り）')
+                            .setStyle(TextInputStyle.Short)
+                            .setPlaceholder('例: やすかわ, 田中')
+                            .setRequired(true)
+                            .setMaxLength(200);
 
-                    // PL入力
-                    const plInput = new TextInputBuilder()
-                        .setCustomId('pl_names')
-                        .setLabel('PL（複数の場合はカンマ区切り）')
-                        .setStyle(TextInputStyle.Paragraph)
-                        .setPlaceholder('例: 佐藤, 鈴木, 高橋, 伊藤')
-                        .setRequired(false)
-                        .setMaxLength(500);
+                        // PL入力
+                        const plInput = new TextInputBuilder()
+                            .setCustomId('pl_names')
+                            .setLabel('PL（複数の場合はカンマ区切り）')
+                            .setStyle(TextInputStyle.Paragraph)
+                            .setPlaceholder('例: 佐藤, 鈴木, 高橋, 伊藤')
+                            .setRequired(false)
+                            .setMaxLength(500);
 
-                    // ActionRowを作成
-                    const firstActionRow = new ActionRowBuilder().addComponents(tableNameInput);
-                    const secondActionRow = new ActionRowBuilder().addComponents(dateInput);
-                    const thirdActionRow = new ActionRowBuilder().addComponents(gmInput);
-                    const fourthActionRow = new ActionRowBuilder().addComponents(plInput);
+                        // ActionRowを作成
+                        const firstActionRow = new ActionRowBuilder().addComponents(tableNameInput);
+                        const secondActionRow = new ActionRowBuilder().addComponents(dateInput);
+                        const thirdActionRow = new ActionRowBuilder().addComponents(gmInput);
+                        const fourthActionRow = new ActionRowBuilder().addComponents(plInput);
 
-                    modal.addComponents(firstActionRow, secondActionRow, thirdActionRow, fourthActionRow);
+                        modal.addComponents(firstActionRow, secondActionRow, thirdActionRow, fourthActionRow);
 
-                    await interaction.showModal(modal);
+                        console.log('🎲 モーダルを表示します...');
+                        await interaction.showModal(modal);
+                        console.log('✅ モーダル表示完了');
+
+                    } catch (error) {
+                        console.error('❌ add-notion コマンドエラー:', error);
+                        await interaction.reply({
+                            content: '❌ フォーム表示エラー: ' + error.message,
+                            ephemeral: true
+                        });
+                    }
                     break;
 
                 default:
@@ -296,43 +309,98 @@ client.on('interactionCreate', async interaction => {
                     return;
                 }
 
+                // Discord情報を取得
+                const channel = interaction.channel;
+                const channelInfo = {
+                    channelId: channel.id,
+                    channelName: channel.name || 'DM',
+                    threadId: channel.isThread() ? channel.id : null,
+                    threadName: channel.isThread() ? channel.name : null,
+                    parentChannelId: channel.isThread() ? channel.parentId : channel.id,
+                    parentChannelName: channel.isThread() ? channel.parent?.name : channel.name
+                };
+
                 // Notionにページを作成
+                const notionProperties = {
+                    '卓名': {
+                        title: [
+                            {
+                                text: {
+                                    content: tempData.tableName
+                                }
+                            }
+                        ]
+                    },
+                    '日付': {
+                        date: {
+                            start: tempData.sessionDate
+                        }
+                    },
+                    'GM': {
+                        multi_select: tempData.gmNames.map(name => ({ name }))
+                    },
+                    'PL': {
+                        multi_select: tempData.plNames.map(name => ({ name }))
+                    }
+                };
+
+                // Discord情報をプロパティに追加（フィールドが存在する場合のみ）
+                if (channelInfo.channelId) {
+                    notionProperties['Discord Channel ID'] = {
+                        rich_text: [
+                            {
+                                text: {
+                                    content: channelInfo.parentChannelId
+                                }
+                            }
+                        ]
+                    };
+                }
+
+                if (channelInfo.threadId) {
+                    notionProperties['Thread ID'] = {
+                        rich_text: [
+                            {
+                                text: {
+                                    content: channelInfo.threadId
+                                }
+                            }
+                        ]
+                    };
+                }
+
+                if (channelInfo.parentChannelName) {
+                    notionProperties['Channel名'] = {
+                        rich_text: [
+                            {
+                                text: {
+                                    content: channelInfo.parentChannelName
+                                }
+                            }
+                        ]
+                    };
+                }
+
+                if (channelInfo.threadName) {
+                    notionProperties['Thread名'] = {
+                        rich_text: [
+                            {
+                                text: {
+                                    content: channelInfo.threadName
+                                }
+                            }
+                        ]
+                    };
+                }
+
                 const response = await notion.pages.create({
                     parent: {
                         database_id: process.env.NOTION_DATABASE_ID
                     },
-                    properties: {
-                        '卓名': {
-                            title: [
-                                {
-                                    text: {
-                                        content: tempData.tableName
-                                    }
-                                }
-                            ]
-                        },
-                        '日付': {
-                            date: {
-                                start: tempData.sessionDate
-                            }
-                        },
-                        'GM': {
-                            multi_select: tempData.gmNames.map(name => ({ name }))
-                        },
-                        'PL': {
-                            multi_select: tempData.plNames.map(name => ({ name }))
-                        }
-                        // TRPGシナリオはリレーションなので、実際のページIDが必要
-                        // ここではコメントアウトして、後で設定方法を説明
-                        // 'TRPGシナリオ': {
-                        //     relation: [
-                        //         { id: 'SCENARIO_PAGE_ID' }
-                        //     ]
-                        // }
-                    }
+                    properties: notionProperties
                 });
 
-                // 成功Embed
+                // 成功Embed（Discord情報も表示）
                 const successEmbed = new EmbedBuilder()
                     .setColor(0x00ff00)
                     .setTitle('✅ Notionに追加完了！')
@@ -342,9 +410,18 @@ client.on('interactionCreate', async interaction => {
                         { name: '📅 開催日', value: tempData.sessionDate, inline: true },
                         { name: '🎮 シナリオ', value: tempData.scenario.label, inline: true },
                         { name: '🎮 GM', value: tempData.gmNames.join(', '), inline: true },
-                        { name: '👥 PL', value: tempData.plNames.join(', ') || '未設定', inline: true }
-                    )
-                    .setTimestamp();
+                        { name: '👥 PL', value: tempData.plNames.join(', ') || '未設定', inline: true },
+                        { name: '📍 チャンネル', value: channelInfo.parentChannelName, inline: true }
+                    );
+
+                // スレッド情報があれば追加
+                if (channelInfo.threadName) {
+                    successEmbed.addFields(
+                        { name: '🧵 スレッド', value: channelInfo.threadName, inline: true }
+                    );
+                }
+
+                successEmbed.setTimestamp();
 
                 await interaction.editReply({ embeds: [successEmbed] });
 
