@@ -379,7 +379,7 @@ client.on('interactionCreate', async interaction => {
     if (interaction.isButton()) {
         if (interaction.customId === 'confirm_notion_add') {
             try {
-                await interaction.deferReply({ flags: 64 }); // ephemeral flag
+                await interaction.deferReply() ;//{ flags: 64 }); // ephemeral flag
 
                 const tempData = global.tempNotionData;
                 if (!tempData || tempData.userId !== interaction.user.id) {
@@ -525,11 +525,30 @@ client.on('interactionCreate', async interaction => {
 
                 console.log('📝 送信するNotionプロパティ:', JSON.stringify(notionProperties, null, 2));
 
+                // ページのコンテンツ（本文）を作成
+                const pageChildren = [];
+                
+                // 画像URLがある場合、本文に画像を追加
+                if (imageUrl) {
+                    pageChildren.push({
+                        object: 'block',
+                        type: 'image',
+                        image: {
+                            type: 'external',
+                            external: {
+                                url: imageUrl
+                            }
+                        }
+                    });
+                    console.log('🖼️ ページ本文に画像を追加:', imageUrl);
+                }
+
                 const response = await notion.pages.create({
                     parent: {
                         database_id: process.env.NOTION_DATABASE_ID
                     },
-                    properties: notionProperties
+                    properties: notionProperties,
+                    children: pageChildren  // 本文コンテンツを追加
                 });
 
                 // 成功Embed（Notionページリンク付き）
@@ -547,10 +566,12 @@ client.on('interactionCreate', async interaction => {
                         { name: '📍 チャンネル', value: channelInfo.parentChannelName, inline: true }
                     );
 
-                // 画像URLがある場合は画像を埋め込み
+                // 画像が本文に追加された場合の表示
                 if (imageUrl) {
-                    successEmbed.setImage(imageUrl);
-                    console.log('🖼️ Embedに画像を設定:', imageUrl);
+                    successEmbed.addFields(
+                        { name: '🖼️ 画像', value: 'シナリオ画像をページ本文に追加しました', inline: true }
+                    );
+                    console.log('🖼️ 本文に画像追加完了');
                 }
 
                 // スレッド情報があれば追加
