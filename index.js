@@ -379,7 +379,7 @@ client.on('interactionCreate', async interaction => {
     if (interaction.isButton()) {
         if (interaction.customId === 'confirm_notion_add') {
             try {
-                await interaction.deferReply();//{ flags: 64 }); // ephemeral flag
+                await interaction.deferReply({ flags: 64 }); // ephemeral flag
 
                 const tempData = global.tempNotionData;
                 if (!tempData || tempData.userId !== interaction.user.id) {
