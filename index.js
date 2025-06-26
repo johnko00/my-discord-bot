@@ -206,7 +206,7 @@ client.on('interactionCreate', async interaction => {
     if (interaction.isModalSubmit()) {
         if (interaction.customId === 'notion_trpg_modal') {
             try {
-                await interaction.deferReply({ flags: 64 }); // ephemeral flag
+                await interaction.deferReply(); // 全体に公開
 
                 const tableName = interaction.fields.getTextInputValue('table_name');
                 const sessionDate = interaction.fields.getTextInputValue('session_date');
