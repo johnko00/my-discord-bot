@@ -109,106 +109,108 @@ client.on('interactionCreate', async interaction => {
     if (interaction.isChatInputCommand()) {
         const { commandName } = interaction;
 
+        console.log(`🎯 受信したコマンド: "${commandName}"`);
+        console.log(`🔍 コマンドタイプ: ${typeof commandName}`);
+        console.log(`🔍 コマンド長: ${commandName.length}`);
+        
         try {
-            switch (commandName) {
-                case 'ping':
-                    const ping = client.ws.ping;
-                    await interaction.reply(`🏓 Pong! レイテンシ: ${ping}ms`);
-                    break;
+            console.log(`📝 コマンド実行: ${commandName}`);
+            
+            if (commandName === 'ping') {
+                console.log('✅ pingコマンド実行');
+                const ping = client.ws.ping;
+                await interaction.reply(`🏓 Pong! レイテンシ: ${ping}ms`);
+            } else if (commandName === 'hello') {
+                console.log('✅ helloコマンド実行');
+                const user = interaction.options.getUser('user');
+                const message = user
+                    ? `👋 こんにちは、${user}さん！`
+                    : `👋 こんにちは、${interaction.user}さん！`;
+                await interaction.reply(message);
+            } else if (commandName === 'serverinfo') {
+                console.log('✅ serverinfoコマンド実行');
+                const guild = interaction.guild;
+                const embed = new EmbedBuilder()
+                    .setColor(0x0099ff)
+                    .setTitle('📊 サーバー情報')
+                    .setThumbnail(guild.iconURL())
+                    .addFields(
+                        { name: '🏷️ サーバー名', value: guild.name, inline: true },
+                        { name: '👥 メンバー数', value: guild.memberCount.toString(), inline: true },
+                        { name: '📅 作成日', value: guild.createdAt.toLocaleDateString('ja-JP'), inline: true },
+                        { name: '🎭 ロール数', value: guild.roles.cache.size.toString(), inline: true },
+                        { name: '📺 チャンネル数', value: guild.channels.cache.size.toString(), inline: true }
+                    )
+                    .setTimestamp();
+                await interaction.reply({ embeds: [embed] });
+            } else if (commandName === 'add-notion') {
+                console.log('✅ add-notionコマンド実行');
+                
+                try {
+                    // フォーム表示
+                    const modal = new ModalBuilder()
+                        .setCustomId('notion_trpg_modal')
+                        .setTitle('🎲 TRPG卓情報をNotionに追加');
 
-                case 'hello':
-                    const user = interaction.options.getUser('user');
-                    const message = user
-                        ? `👋 こんにちは、${user}さん！`
-                        : `👋 こんにちは、${interaction.user}さん！`;
-                    await interaction.reply(message);
-                    break;
+                    // 卓名入力
+                    const tableNameInput = new TextInputBuilder()
+                        .setCustomId('table_name')
+                        .setLabel('卓名')
+                        .setStyle(TextInputStyle.Short)
+                        .setPlaceholder('例: 第1回クトゥルフ卓')
+                        .setRequired(true)
+                        .setMaxLength(100);
 
-                case 'serverinfo':
-                    const guild = interaction.guild;
-                    const embed = new EmbedBuilder()
-                        .setColor(0x0099ff)
-                        .setTitle('📊 サーバー情報')
-                        .setThumbnail(guild.iconURL())
-                        .addFields(
-                            { name: '🏷️ サーバー名', value: guild.name, inline: true },
-                            { name: '👥 メンバー数', value: guild.memberCount.toString(), inline: true },
-                            { name: '📅 作成日', value: guild.createdAt.toLocaleDateString('ja-JP'), inline: true },
-                            { name: '🎭 ロール数', value: guild.roles.cache.size.toString(), inline: true },
-                            { name: '📺 チャンネル数', value: guild.channels.cache.size.toString(), inline: true }
-                        )
-                        .setTimestamp();
-                    await interaction.reply({ embeds: [embed] });
-                    break;
+                    // 日付入力（より柔軟に）
+                    const dateInput = new TextInputBuilder()
+                        .setCustomId('session_date')
+                        .setLabel('開催日（複数形式対応）')
+                        .setStyle(TextInputStyle.Short)
+                        .setPlaceholder('例: 2025-06-25, 06/25, 明日, 来週土曜日')
+                        .setRequired(true)
+                        .setMaxLength(20);
 
-                case 'add-notion':
-                    try {
-                        console.log('🎲 add-notion コマンドが実行されました');
-                        
-                        // フォーム表示
-                        const modal = new ModalBuilder()
-                            .setCustomId('notion_trpg_modal')
-                            .setTitle('🎲 TRPG卓情報をNotionに追加');
+                    // GM入力（参考用）
+                    const gmInput = new TextInputBuilder()
+                        .setCustomId('gm_names')
+                        .setLabel('GM（参考・後で選択メニューで再選択）')
+                        .setStyle(TextInputStyle.Short)
+                        .setPlaceholder('例: やす, うお')
+                        .setRequired(false)
+                        .setMaxLength(200);
 
-                        // 卓名入力
-                        const tableNameInput = new TextInputBuilder()
-                            .setCustomId('table_name')
-                            .setLabel('卓名')
-                            .setStyle(TextInputStyle.Short)
-                            .setPlaceholder('例: 第1回クトゥルフ卓')
-                            .setRequired(true)
-                            .setMaxLength(100);
+                    // PL入力（参考用）
+                    const plInput = new TextInputBuilder()
+                        .setCustomId('pl_names')
+                        .setLabel('PL（参考・後で選択メニューで再選択）')
+                        .setStyle(TextInputStyle.Paragraph)
+                        .setPlaceholder('例: カン, ザク')
+                        .setRequired(false)
+                        .setMaxLength(500);
 
-                        // 日付入力（より柔軟に）
-                        const dateInput = new TextInputBuilder()
-                            .setCustomId('session_date')
-                            .setLabel('開催日（複数形式対応）')
-                            .setStyle(TextInputStyle.Short)
-                            .setPlaceholder('例: 2025-06-25, 06/25, 明日, 来週土曜日')
-                            .setRequired(true)
-                            .setMaxLength(20);
+                    // ActionRowを作成
+                    const firstActionRow = new ActionRowBuilder().addComponents(tableNameInput);
+                    const secondActionRow = new ActionRowBuilder().addComponents(dateInput);
+                    const thirdActionRow = new ActionRowBuilder().addComponents(gmInput);
+                    const fourthActionRow = new ActionRowBuilder().addComponents(plInput);
 
-                        // GM入力（参考用）
-                        const gmInput = new TextInputBuilder()
-                            .setCustomId('gm_names')
-                            .setLabel('GM（参考・後で選択メニューで再選択）')
-                            .setStyle(TextInputStyle.Short)
-                            .setPlaceholder('例: やす, うお')
-                            .setRequired(false)
-                            .setMaxLength(200);
+                    modal.addComponents(firstActionRow, secondActionRow, thirdActionRow, fourthActionRow);
 
-                        // PL入力（参考用）
-                        const plInput = new TextInputBuilder()
-                            .setCustomId('pl_names')
-                            .setLabel('PL（参考・後で選択メニューで再選択）')
-                            .setStyle(TextInputStyle.Paragraph)
-                            .setPlaceholder('例: カン, ザク')
-                            .setRequired(false)
-                            .setMaxLength(500);
+                    console.log('🎲 モーダルを表示します...');
+                    await interaction.showModal(modal);
+                    console.log('✅ モーダル表示完了');
 
-                        // ActionRowを作成
-                        const firstActionRow = new ActionRowBuilder().addComponents(tableNameInput);
-                        const secondActionRow = new ActionRowBuilder().addComponents(dateInput);
-                        const thirdActionRow = new ActionRowBuilder().addComponents(gmInput);
-                        const fourthActionRow = new ActionRowBuilder().addComponents(plInput);
-
-                        modal.addComponents(firstActionRow, secondActionRow, thirdActionRow, fourthActionRow);
-
-                        console.log('🎲 モーダルを表示します...');
-                        await interaction.showModal(modal);
-                        console.log('✅ モーダル表示完了');
-
-                    } catch (error) {
-                        console.error('❌ add-notion コマンドエラー:', error);
-                        await interaction.reply({
-                            content: '❌ フォーム表示エラー: ' + error.message,
-                            ephemeral: true
-                        });
-                    }
-                    break;
-
-                default:
-                    await interaction.reply('❌ 未知のコマンドです。');
+                } catch (modalError) {
+                    console.error('❌ Modal表示エラー:', modalError);
+                    await interaction.reply({
+                        content: '❌ フォーム表示エラー: ' + modalError.message,
+                        flags: 64 // ephemeral flag
+                    });
+                }
+            } else {
+                console.log(`❌ 未知のコマンド: "${commandName}"`);
+                console.log('🔍 利用可能なコマンド: ping, hello, serverinfo, add-notion');
+                await interaction.reply('❌ 未知のコマンドです。');
             }
         } catch (error) {
             console.error('コマンド実行エラー:', error);
@@ -324,30 +326,17 @@ client.on('interactionCreate', async interaction => {
 
                 const buttonRow = new ActionRowBuilder().addComponents(confirmButton, cancelButton);
 
-                // 確認ボタン
-                const confirmButton = new ButtonBuilder()
-                    .setCustomId('confirm_notion_add')
-                    .setLabel('✅ Notionに追加')
-                    .setStyle(ButtonStyle.Primary);
-
-                const cancelButton = new ButtonBuilder()
-                    .setCustomId('cancel_notion_add')
-                    .setLabel('❌ キャンセル')
-                    .setStyle(ButtonStyle.Secondary);
-
-                const buttonRow = new ActionRowBuilder().addComponents(confirmButton, cancelButton);
-
-                // 確認用Embed（パース済み日付も表示）
+                // 確認用Embed
                 const confirmEmbed = new EmbedBuilder()
                     .setColor(0x0099ff)
                     .setTitle('🎲 TRPG卓情報確認')
                     .addFields(
                         { name: '🏷️ 卓名', value: tableName, inline: true },
                         { name: '📅 開催日', value: `${parsedDate}${sessionDate !== parsedDate ? ` (${sessionDate})` : ''}`, inline: true },
-                        { name: '🎮 GM', value: gmNames, inline: true },
-                        { name: '👥 PL', value: plNames || '未設定', inline: false }
+                        { name: '🎮 GM（入力値）', value: gmNames || '未設定', inline: true },
+                        { name: '👥 PL（入力値）', value: plNames || '未設定', inline: false }
                     )
-                    .setFooter({ text: 'TRPGシナリオを選択して「Notionに追加」をクリックしてください' });
+                    .setFooter({ text: 'GMとPLを選択メニューで選んで「Notionに追加」をクリックしてください' });
 
                 // 一時的にデータを保存（パース済み日付を使用）
                 global.tempNotionData = {
@@ -355,13 +344,15 @@ client.on('interactionCreate', async interaction => {
                     tableName,
                     sessionDate: parsedDate,  // パース済みの日付を使用
                     originalDate: sessionDate, // 元の入力も保存
-                    gmNames: gmNames.split(',').map(name => name.trim()),
-                    plNames: plNames ? plNames.split(',').map(name => name.trim()) : []
+                    inputGmNames: gmNames, // 入力されたGM名
+                    inputPlNames: plNames, // 入力されたPL名
+                    selectedGm: [], // 選択されたGM（後で設定）
+                    selectedPl: []  // 選択されたPL（後で設定）
                 };
 
                 await interaction.editReply({
                     embeds: [confirmEmbed],
-                    components: [selectRow, buttonRow]
+                    components: [gmSelectRow, plSelectRow, buttonRow]
                 });
 
             } catch (error) {
@@ -448,7 +439,7 @@ client.on('interactionCreate', async interaction => {
 
                 // スレッドの場合、別のDBで対応するページを検索
                 let relatedThreadPage = null;
-                if (channelInfo.threadUrl) {
+                if (channelInfo.threadUrl && process.env.NOTION_THREAD_DATABASE_ID) {
                     try {
                         console.log('🔍 スレッドURLで別DBを検索中...', channelInfo.threadUrl);
                         
