@@ -324,6 +324,19 @@ client.on('interactionCreate', async interaction => {
 
                 const buttonRow = new ActionRowBuilder().addComponents(confirmButton, cancelButton);
 
+                // 確認ボタン
+                const confirmButton = new ButtonBuilder()
+                    .setCustomId('confirm_notion_add')
+                    .setLabel('✅ Notionに追加')
+                    .setStyle(ButtonStyle.Primary);
+
+                const cancelButton = new ButtonBuilder()
+                    .setCustomId('cancel_notion_add')
+                    .setLabel('❌ キャンセル')
+                    .setStyle(ButtonStyle.Secondary);
+
+                const buttonRow = new ActionRowBuilder().addComponents(confirmButton, cancelButton);
+
                 // 確認用Embed（パース済み日付も表示）
                 const confirmEmbed = new EmbedBuilder()
                     .setColor(0x0099ff)
