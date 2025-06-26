@@ -161,13 +161,13 @@ client.on('interactionCreate', async interaction => {
                         .setRequired(true)
                         .setMaxLength(100);
 
-                    // 日付入力（より柔軟に）
+                    // 日付入力（必須を外し、プレースホルダーを更新）
                     const dateInput = new TextInputBuilder()
                         .setCustomId('session_date')
-                        .setLabel('開催日（複数形式対応）')
+                        .setLabel('開催日（省略可能）')
                         .setStyle(TextInputStyle.Short)
-                        .setPlaceholder('例: 2025-06-25, 06/25, 明日, 来週土曜日')
-                        .setRequired(true)
+                        .setPlaceholder('例: 2025-06-25, 06/25, 明日, 来週土曜日（空欄でもOK）')
+                        .setRequired(false)  // 必須を false に変更
                         .setMaxLength(20);
 
                     // ActionRowを作成（GM/PL項目を削除）
@@ -213,6 +213,11 @@ client.on('interactionCreate', async interaction => {
 
                 // 日付を標準形式に変換する関数
                 function parseDate(dateInput) {
+                    // 空欄または空文字列の場合は null を返す
+                    if (!dateInput || dateInput.trim() === '') {
+                        return null;
+                    }
+                    
                     const today = new Date();
                     const inputLower = dateInput.toLowerCase().trim();
                     
@@ -251,12 +256,13 @@ client.on('interactionCreate', async interaction => {
 
                 const parsedDate = parseDate(sessionDate);
 
-                // 日付形式の検証（より柔軟に）
-                if (!/^\d{4}-\d{2}-\d{2}$/.test(parsedDate)) {
+                // 日付が入力されている場合のみ形式をチェック
+                if (parsedDate && !/^\d{4}-\d{2}-\d{2}$/.test(parsedDate)) {
                     await interaction.editReply(`❌ 日付の形式を認識できませんでした。以下の形式で入力してください：
 • YYYY-MM-DD (例: 2025-06-25)
 • MM/DD (例: 06/25)
-• 今日、明日、来週`);
+• 今日、明日、来週
+• 空欄（日付なし）`);
                     return;
                 }
 
@@ -304,13 +310,19 @@ client.on('interactionCreate', async interaction => {
 
                 const buttonRow = new ActionRowBuilder().addComponents(confirmButton, cancelButton);
 
-                // 確認用Embed
+                // 確認用Embed（日付が null の場合の表示を調整）
                 const confirmEmbed = new EmbedBuilder()
                     .setColor(0x0099ff)
                     .setTitle('🎲 TRPG卓情報確認')
                     .addFields(
                         { name: '🏷️ 卓名', value: tableName, inline: true },
-                        { name: '📅 開催日', value: `${parsedDate}${sessionDate !== parsedDate ? ` (${sessionDate})` : ''}`, inline: true }
+                        { 
+                            name: '📅 開催日', 
+                            value: parsedDate 
+                                ? `${parsedDate}${sessionDate !== parsedDate ? ` (${sessionDate})` : ''}` 
+                                : '未設定', 
+                            inline: true 
+                        }
                     )
                     .setFooter({ text: 'GMとPLを選択メニューで選んで「Notionに追加」をクリックしてください' });
 
@@ -318,7 +330,7 @@ client.on('interactionCreate', async interaction => {
                 global.tempNotionData = {
                     userId: interaction.user.id,
                     tableName,
-                    sessionDate: parsedDate,  // パース済みの日付を使用
+                    sessionDate: parsedDate,  // null の可能性あり
                     originalDate: sessionDate, // 元の入力も保存
                     selectedGm: [], // 選択されたGM（後で設定）
                     selectedPl: []  // 選択されたPL（後で設定）
@@ -444,11 +456,6 @@ client.on('interactionCreate', async interaction => {
                             }
                         ]
                     },
-                    '日付': {
-                        date: {
-                            start: tempData.sessionDate
-                        }
-                    },
                     'GM': {
                         multi_select: selectedGmNames.map(name => ({ name }))
                     },
@@ -456,6 +463,15 @@ client.on('interactionCreate', async interaction => {
                         multi_select: selectedPlNames.map(name => ({ name }))
                     }
                 };
+
+                // 日付が設定されている場合のみ追加
+                if (tempData.sessionDate) {
+                    notionProperties['日付'] = {
+                        date: {
+                            start: tempData.sessionDate
+                        }
+                    };
+                }
 
                 // 関連スレッドページがある場合、リレーションを追加
                 if (relatedThreadPage) {
@@ -485,7 +501,7 @@ client.on('interactionCreate', async interaction => {
                     .setDescription(`TRPG卓情報がNotionデータベースに正常に追加されました。\n\n🔗 [Notionページを開く](${notionPageUrl})`)
                     .addFields(
                         { name: '🏷️ 卓名', value: tempData.tableName, inline: true },
-                        { name: '📅 開催日', value: tempData.sessionDate, inline: true },
+                        { name: '📅 開催日', value: tempData.sessionDate || '未設定', inline: true },
                         { name: '🎮 GM', value: selectedGmNames.join(', '), inline: true },
                         { name: '👥 PL', value: selectedPlNames.join(', ') || 'なし', inline: true },
                         { name: '📍 チャンネル', value: channelInfo.parentChannelName, inline: true }
