@@ -1,31 +1,4 @@
-} catch (error) {
-                console.error('❌ Notion追加エラー（詳細）:', error);
-                console.error('❌ エラーメッセージ:', error.message);
-                console.error('❌ エラーコード:', error.code);
-                console.error('❌ エラースタック:', error.stack);
-                
-                // Notion APIエラーの詳細ログ
-                if (error.body) {
-                    console.error('❌ Notion APIエラー詳細:', JSON.stringify(error.body, null, 2));
-                }
-                
-                let errorMessage = 'Notionへの追加中にエラーが発生しました。';
-                
-                // 環境変数チェック
-                if (!process.env.NOTION_TOKEN) {
-                    errorMessage += '\n❌ NOTION_TOKENが設定されていません。';
-                }
-                if (!process.env.NOTION_DATABASE_ID) {
-                    errorMessage += '\n❌ NOTION_DATABASE_IDが設定されていません。';
-                }
-                
-                // Notion APIエラーの分析
-                if (error.code === 'unauthorized') {
-                    errorMessage += '\n❌ Notion Integration Tokenが無効です。';
-                } else if (error.code === 'object_not_found') {
-                    errorMessage += '\n❌ Notionデータベースが見つかりません。';
-                } else if (error.code === 'validation_error') {
-                    errorMessage += '\n// 必要なライブラリを読み込み
+// 必要なライブラリを読み込み
 const { Client, GatewayIntentBits, EmbedBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { REST } = require('@discordjs/rest');
 const { Routes } = require('discord-api-types/v10');
@@ -582,8 +555,36 @@ client.on('interactionCreate', async interaction => {
                 console.log('✅ Notionページ作成成功:', response.id);
 
             } catch (error) {
-                console.error('❌ Notion追加エラー:', error);
-                await interaction.editReply('❌ Notionへの追加中にエラーが発生しました。');
+                console.error('❌ Notion追加エラー（詳細）:', error);
+                console.error('❌ エラーメッセージ:', error.message);
+                console.error('❌ エラーコード:', error.code);
+                console.error('❌ エラースタック:', error.stack);
+                
+                // Notion APIエラーの詳細ログ
+                if (error.body) {
+                    console.error('❌ Notion APIエラー詳細:', JSON.stringify(error.body, null, 2));
+                }
+                
+                let errorMessage = 'Notionへの追加中にエラーが発生しました。';
+                
+                // 環境変数チェック
+                if (!process.env.NOTION_TOKEN) {
+                    errorMessage += '\n❌ NOTION_TOKENが設定されていません。';
+                }
+                if (!process.env.NOTION_DATABASE_ID) {
+                    errorMessage += '\n❌ NOTION_DATABASE_IDが設定されていません。';
+                }
+                
+                // Notion APIエラーの分析
+                if (error.code === 'unauthorized') {
+                    errorMessage += '\n❌ Notion Integration Tokenが無効です。';
+                } else if (error.code === 'object_not_found') {
+                    errorMessage += '\n❌ Notionデータベースが見つかりません。';
+                } else if (error.code === 'validation_error') {
+                    errorMessage += '\n❌ Notionプロパティの設定に問題があります。';
+                }
+                
+                await interaction.editReply(errorMessage);
             }
         }
 
