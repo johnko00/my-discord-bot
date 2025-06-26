@@ -64,19 +64,41 @@ client.once('ready', async () => {
     const rest = new REST({ version: '10' }).setToken(process.env.BOT_TOKEN);
     
     try {
-        console.log('🗑️ 古いコマンドを削除中...');
+        console.log('🗑️ 全てのコマンドを強制削除中...');
+        
+        // グローバルコマンドを削除
         await rest.put(
             Routes.applicationCommands(client.user.id),
             { body: [] }
         );
-        console.log('✅ 古いコマンド削除完了！');
+        
+        // 各ギルドのコマンドも削除
+        for (const guild of client.guilds.cache.values()) {
+            try {
+                await rest.put(
+                    Routes.applicationGuildCommands(client.user.id, guild.id),
+                    { body: [] }
+                );
+                console.log(`🗑️ ${guild.name} のコマンドを削除`);
+            } catch (guildError) {
+                console.log(`⚠️ ${guild.name} のコマンド削除をスキップ`);
+            }
+        }
+        
+        console.log('✅ 全コマンド削除完了！');
+        
+        // 少し待ってから新しいコマンドを登録
+        await new Promise(resolve => setTimeout(resolve, 2000));
         
         console.log('🔄 新しいコマンドを登録中...');
-        await rest.put(
+        const result = await rest.put(
             Routes.applicationCommands(client.user.id),
             { body: commands }
         );
-        console.log('✅ 新しいコマンド登録完了！');
+        
+        console.log(`✅ ${result.length}個のコマンド登録完了！`);
+        console.log('📝 登録されたコマンド:', result.map(cmd => cmd.name).join(', '));
+        
     } catch (error) {
         console.error('❌ コマンド処理エラー:', error);
     }
