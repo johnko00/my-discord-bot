@@ -170,31 +170,11 @@ client.on('interactionCreate', async interaction => {
                         .setRequired(true)
                         .setMaxLength(20);
 
-                    // GM入力（参考用）
-                    const gmInput = new TextInputBuilder()
-                        .setCustomId('gm_names')
-                        .setLabel('GM（参考・後で選択メニューで再選択）')
-                        .setStyle(TextInputStyle.Short)
-                        .setPlaceholder('例: やす, うお')
-                        .setRequired(false)
-                        .setMaxLength(200);
-
-                    // PL入力（参考用）
-                    const plInput = new TextInputBuilder()
-                        .setCustomId('pl_names')
-                        .setLabel('PL（参考・後で選択メニューで再選択）')
-                        .setStyle(TextInputStyle.Paragraph)
-                        .setPlaceholder('例: カン, ザク')
-                        .setRequired(false)
-                        .setMaxLength(500);
-
-                    // ActionRowを作成
+                    // ActionRowを作成（GM/PL項目を削除）
                     const firstActionRow = new ActionRowBuilder().addComponents(tableNameInput);
                     const secondActionRow = new ActionRowBuilder().addComponents(dateInput);
-                    const thirdActionRow = new ActionRowBuilder().addComponents(gmInput);
-                    const fourthActionRow = new ActionRowBuilder().addComponents(plInput);
 
-                    modal.addComponents(firstActionRow, secondActionRow, thirdActionRow, fourthActionRow);
+                    modal.addComponents(firstActionRow, secondActionRow);
 
                     console.log('🎲 モーダルを表示します...');
                     await interaction.showModal(modal);
@@ -230,8 +210,6 @@ client.on('interactionCreate', async interaction => {
 
                 const tableName = interaction.fields.getTextInputValue('table_name');
                 const sessionDate = interaction.fields.getTextInputValue('session_date');
-                const gmNames = interaction.fields.getTextInputValue('gm_names') || '';
-                const plNames = interaction.fields.getTextInputValue('pl_names') || '';
 
                 // 日付を標準形式に変換する関数
                 function parseDate(dateInput) {
@@ -332,9 +310,7 @@ client.on('interactionCreate', async interaction => {
                     .setTitle('🎲 TRPG卓情報確認')
                     .addFields(
                         { name: '🏷️ 卓名', value: tableName, inline: true },
-                        { name: '📅 開催日', value: `${parsedDate}${sessionDate !== parsedDate ? ` (${sessionDate})` : ''}`, inline: true },
-                        { name: '🎮 GM（入力値）', value: gmNames || '未設定', inline: true },
-                        { name: '👥 PL（入力値）', value: plNames || '未設定', inline: false }
+                        { name: '📅 開催日', value: `${parsedDate}${sessionDate !== parsedDate ? ` (${sessionDate})` : ''}`, inline: true }
                     )
                     .setFooter({ text: 'GMとPLを選択メニューで選んで「Notionに追加」をクリックしてください' });
 
@@ -344,8 +320,6 @@ client.on('interactionCreate', async interaction => {
                     tableName,
                     sessionDate: parsedDate,  // パース済みの日付を使用
                     originalDate: sessionDate, // 元の入力も保存
-                    inputGmNames: gmNames, // 入力されたGM名
-                    inputPlNames: plNames, // 入力されたPL名
                     selectedGm: [], // 選択されたGM（後で設定）
                     selectedPl: []  // 選択されたPL（後で設定）
                 };
@@ -366,34 +340,26 @@ client.on('interactionCreate', async interaction => {
     if (interaction.isStringSelectMenu()) {
         if (interaction.customId === 'gm_select') {
             const selectedGm = interaction.values;
-            const gmLabels = selectedGm.map(value => MEMBERS.find(m => m.value === value)?.label).join(', ');
             
             // グローバルデータに追加
             if (global.tempNotionData && global.tempNotionData.userId === interaction.user.id) {
                 global.tempNotionData.selectedGm = selectedGm;
             }
 
-            await interaction.reply({ 
-                content: `✅ GM「${gmLabels}」を選択しました。`,
-                flags: 64 // ephemeral flag
-            });
+            // 返信なしで更新のみ（ephemeralで返信無効化）
+            await interaction.deferUpdate();
         }
 
         if (interaction.customId === 'pl_select') {
             const selectedPl = interaction.values;
-            const plLabels = selectedPl.length > 0 
-                ? selectedPl.map(value => MEMBERS.find(m => m.value === value)?.label).join(', ')
-                : 'なし';
             
             // グローバルデータに追加
             if (global.tempNotionData && global.tempNotionData.userId === interaction.user.id) {
                 global.tempNotionData.selectedPl = selectedPl;
             }
 
-            await interaction.reply({ 
-                content: `✅ PL「${plLabels}」を選択しました。`,
-                flags: 64 // ephemeral flag
-            });
+            // 返信なしで更新のみ（ephemeralで返信無効化）
+            await interaction.deferUpdate();
         }
     }
 
@@ -510,11 +476,13 @@ client.on('interactionCreate', async interaction => {
                     properties: notionProperties
                 });
 
-                // 成功Embed（関連情報も表示）
+                // 成功Embed（Notionページリンク付き）
+                const notionPageUrl = `https://www.notion.so/${response.id.replace(/-/g, '')}`;
+                
                 const successEmbed = new EmbedBuilder()
                     .setColor(0x00ff00)
                     .setTitle('✅ Notionに追加完了！')
-                    .setDescription('TRPG卓情報がNotionデータベースに正常に追加されました。')
+                    .setDescription(`TRPG卓情報がNotionデータベースに正常に追加されました。\n\n🔗 [Notionページを開く](${notionPageUrl})`)
                     .addFields(
                         { name: '🏷️ 卓名', value: tempData.tableName, inline: true },
                         { name: '📅 開催日', value: tempData.sessionDate, inline: true },
