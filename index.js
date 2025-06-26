@@ -417,6 +417,7 @@ client.on('interactionCreate', async interaction => {
 
                 // スレッドの場合、別のDBで対応するページを検索
                 let relatedThreadPage = null;
+                let imageUrl = null;
                 if (channelInfo.threadUrl && process.env.NOTION_THREAD_DATABASE_ID) {
                     try {
                         console.log('🔍 スレッドURLで別DBを検索中...', channelInfo.threadUrl);
@@ -436,6 +437,45 @@ client.on('interactionCreate', async interaction => {
                         if (threadSearchResponse.results.length > 0) {
                             relatedThreadPage = threadSearchResponse.results[0];
                             console.log('✅ 関連スレッドページ発見:', relatedThreadPage.id);
+                            
+                            // ファイル&メディアプロパティから画像URLを取得
+                            try {
+                                const pageDetails = await notion.pages.retrieve({
+                                    page_id: relatedThreadPage.id
+                                });
+                                
+                                console.log('📄 ページ詳細を取得:', pageDetails.id);
+                                
+                                // ファイル&メディアプロパティを探す（複数の可能な名前を試す）
+                                const possibleFileProperties = ['ファイル&メディア', 'ファイル', 'メディア', 'Files & media', 'Files', 'Media', 'Image', '画像'];
+                                
+                                for (const propName of possibleFileProperties) {
+                                    const fileProperty = pageDetails.properties[propName];
+                                    if (fileProperty && fileProperty.type === 'files' && fileProperty.files && fileProperty.files.length > 0) {
+                                        const firstFile = fileProperty.files[0];
+                                        
+                                        // 外部ファイルかNotionファイルかを判定
+                                        if (firstFile.type === 'external' && firstFile.external && firstFile.external.url) {
+                                            imageUrl = firstFile.external.url;
+                                            console.log(`🖼️ 外部画像URL取得 (${propName}):`, imageUrl);
+                                            break;
+                                        } else if (firstFile.type === 'file' && firstFile.file && firstFile.file.url) {
+                                            imageUrl = firstFile.file.url;
+                                            console.log(`🖼️ Notion画像URL取得 (${propName}):`, imageUrl);
+                                            break;
+                                        }
+                                    }
+                                }
+                                
+                                if (!imageUrl) {
+                                    console.log('⚠️ ファイル&メディアプロパティまたは画像が見つかりませんでした');
+                                    console.log('🔍 利用可能なプロパティ:', Object.keys(pageDetails.properties));
+                                }
+                                
+                            } catch (pageError) {
+                                console.error('❌ ページ詳細取得エラー:', pageError);
+                                // エラーがあっても処理を続行
+                            }
                         } else {
                             console.log('⚠️ 関連スレッドページが見つかりませんでした');
                         }
@@ -506,6 +546,12 @@ client.on('interactionCreate', async interaction => {
                         { name: '👥 PL', value: selectedPlNames.join(', ') || 'なし', inline: true },
                         { name: '📍 チャンネル', value: channelInfo.parentChannelName, inline: true }
                     );
+
+                // 画像URLがある場合は画像を埋め込み
+                if (imageUrl) {
+                    successEmbed.setImage(imageUrl);
+                    console.log('🖼️ Embedに画像を設定:', imageUrl);
+                }
 
                 // スレッド情報があれば追加
                 if (channelInfo.threadName) {
