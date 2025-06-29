@@ -56,6 +56,66 @@ const MEMBERS = [
     { label: 'ザク', value: 'zaku', emoji: '🤖' }
 ];
 
+// Render用のWebサーバー（早期初期化）
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// ヘルスチェック用ルート
+app.get('/', (req, res) => {
+    const botStatus = client.isReady() ? 'Online' : 'Connecting...';
+    res.json({
+        status: 'Bot is running!',
+        botStatus: botStatus,
+        botName: client.user?.tag || 'Bot',
+        servers: client.guilds.cache.size,
+        uptime: Math.floor(process.uptime()),
+        timestamp: new Date().toISOString(),
+        ping: client.ws.ping || -1
+    });
+});
+
+app.get('/health', (req, res) => {
+    res.json({ 
+        status: 'OK', 
+        timestamp: new Date().toISOString(),
+        botReady: client.isReady()
+    });
+});
+
+// Keep-alive機能：自分自身にpingを送る
+function keepAlive() {
+    const url = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
+    
+    setInterval(async () => {
+        try {
+            const fetch = (await import('node-fetch')).default;
+            const response = await fetch(`${url}/health`);
+            const data = await response.json();
+            console.log(`🏓 Keep-alive ping: ${data.status} at ${data.timestamp}`);
+        } catch (error) {
+            console.log('⚠️ Keep-alive ping failed:', error.message);
+        }
+    }, 25 * 60 * 1000); // 25分間隔（30分制限より少し短く）
+}
+
+// サーバー起動
+const server = app.listen(PORT, () => {
+    console.log(`🌐 Server running on port ${PORT}`);
+    
+    // Keep-alive機能を開始（production環境のみ）
+    if (process.env.NODE_ENV === 'production' || process.env.RENDER_EXTERNAL_URL) {
+        console.log('🔄 Keep-alive機能を開始します...');
+        keepAlive();
+    }
+}).on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+        console.log(`⚠️ Port ${PORT} is already in use. Trying port ${PORT + 1}...`);
+        app.listen(PORT + 1);
+    } else {
+        console.error('❌ Server error:', err);
+    }
+});
+
 // ボット起動時の処理
 client.once('ready', async () => {
     console.log(`✅ ${client.user.tag} がオンラインになりました！`);
@@ -104,6 +164,15 @@ client.once('ready', async () => {
     }
 });
 
+// 再接続時の処理
+client.on('reconnecting', () => {
+    console.log('🔄 Discordに再接続中...');
+});
+
+client.on('resumed', () => {
+    console.log('✅ Discord接続が復旧しました');
+});
+
 // スラッシュコマンドが実行された時の処理
 client.on('interactionCreate', async interaction => {
     if (interaction.isChatInputCommand()) {
@@ -119,7 +188,8 @@ client.on('interactionCreate', async interaction => {
             if (commandName === 'ping') {
                 console.log('✅ pingコマンド実行');
                 const ping = client.ws.ping;
-                await interaction.reply(`🏓 Pong! レイテンシ: ${ping}ms`);
+                const uptime = Math.floor(process.uptime());
+                await interaction.reply(`🏓 Pong! レイテンシ: ${ping}ms\n⏱️ 稼働時間: ${uptime}秒`);
             } else if (commandName === 'hello') {
                 console.log('✅ helloコマンド実行');
                 const user = interaction.options.getUser('user');
@@ -649,46 +719,53 @@ client.on('interactionCreate', async interaction => {
     }
 });
 
-// エラーハンドリング
+// エラーハンドリング強化
 client.on('error', error => {
     console.error('❌ Discordクライアントエラー:', error);
 });
 
+client.on('warn', warning => {
+    console.warn('⚠️ Discord警告:', warning);
+});
+
+client.on('shardError', error => {
+    console.error('❌ Discord Shardエラー:', error);
+});
+
 process.on('uncaughtException', error => {
     console.error('❌ 予期しないエラー:', error);
+    // クリティカルエラーでもプロセスを継続
+    console.log('🔄 プロセスを継続します...');
 });
 
 process.on('unhandledRejection', error => {
     console.error('❌ 処理されていないPromise拒否:', error);
 });
 
-// Render用のWebサーバー
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-app.get('/', (req, res) => {
-    res.json({
-        status: 'Bot is running!',
-        botName: client.user?.tag || 'Bot',
-        servers: client.guilds.cache.size,
-        uptime: process.uptime()
+// Graceful shutdown
+process.on('SIGTERM', () => {
+    console.log('📴 SIGTERM受信。グレースフルシャットダウンを開始...');
+    server.close(() => {
+        console.log('🌐 HTTPサーバーを停止しました');
+        client.destroy();
+        console.log('🤖 Discordクライアントを停止しました');
+        process.exit(0);
     });
 });
 
-app.get('/health', (req, res) => {
-    res.json({ status: 'OK', timestamp: new Date().toISOString() });
+process.on('SIGINT', () => {
+    console.log('📴 SIGINT受信。グレースフルシャットダウンを開始...');
+    server.close(() => {
+        console.log('🌐 HTTPサーバーを停止しました');
+        client.destroy();
+        console.log('🤖 Discordクライアントを停止しました');
+        process.exit(0);
+    });
 });
 
-app.listen(PORT, () => {
-    console.log(`🌐 Server running on port ${PORT}`);
-}).on('error', (err) => {
-    if (err.code === 'EADDRINUSE') {
-        console.log(`⚠️ Port ${PORT} is already in use. Trying port ${PORT + 1}...`);
-        app.listen(PORT + 1);
-    } else {
-        console.error('❌ Server error:', err);
-    }
-});
 // ボットにログイン
 console.log('🚀 ボットを起動中...');
-client.login(process.env.BOT_TOKEN);
+client.login(process.env.BOT_TOKEN).catch(error => {
+    console.error('❌ ボットログインエラー:', error);
+    process.exit(1);
+});
