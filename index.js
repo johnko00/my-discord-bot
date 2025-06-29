@@ -689,7 +689,6 @@ app.listen(PORT, () => {
         console.error('❌ Server error:', err);
     }
 });
-
 // ボットにログイン
 console.log('🚀 ボットを起動中...');
 client.login(process.env.BOT_TOKEN);
