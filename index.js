@@ -56,6 +56,38 @@ const MEMBERS = [
     { label: 'ザク', value: 'zaku', emoji: '🤖' }
 ];
 
+// ステータス更新関数
+async function updateScenarioStatus(pageId) {
+    try {
+        console.log(`🔄 ページ ${pageId} のステータスを「やる予定」に更新中...`);
+        
+        // ページを更新
+        const updateResponse = await notion.pages.update({
+            page_id: pageId,
+            properties: {
+                'ステータス': {
+                    select: {
+                        name: 'やる予定'
+                    }
+                }
+            }
+        });
+        
+        console.log(`✅ ステータス更新成功: ${pageId}`);
+        return {
+            success: true,
+            message: 'ステータスを「やる予定」に更新しました'
+        };
+        
+    } catch (error) {
+        console.error('❌ ステータス更新エラー:', error);
+        return {
+            success: false,
+            message: `ステータス更新エラー: ${error.message}`
+        };
+    }
+}
+
 // Render用のWebサーバー（早期初期化）
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -488,6 +520,8 @@ client.on('interactionCreate', async interaction => {
                 // スレッドの場合、別のDBで対応するページを検索
                 let relatedThreadPage = null;
                 let imageUrl = null;
+                let statusUpdateResult = null;
+                
                 if (channelInfo.threadUrl && process.env.NOTION_THREAD_DATABASE_ID) {
                     try {
                         console.log('🔍 スレッドURLで別DBを検索中...', channelInfo.threadUrl);
@@ -507,6 +541,16 @@ client.on('interactionCreate', async interaction => {
                         if (threadSearchResponse.results.length > 0) {
                             relatedThreadPage = threadSearchResponse.results[0];
                             console.log('✅ 関連スレッドページ発見:', relatedThreadPage.id);
+                            
+                            // ステータスを「やる予定」に更新
+                            console.log('🔄 シナリオページのステータス更新を開始...');
+                            statusUpdateResult = await updateScenarioStatus(relatedThreadPage.id);
+                            
+                            if (statusUpdateResult.success) {
+                                console.log('✅ ステータス更新成功:', statusUpdateResult.message);
+                            } else {
+                                console.log('⚠️ ステータス更新失敗:', statusUpdateResult.message);
+                            }
                             
                             // ファイル&メディアプロパティから画像URLを取得
                             try {
@@ -591,6 +635,16 @@ client.on('interactionCreate', async interaction => {
                         ]
                     };
                     console.log('🔗 リレーション設定:', relatedThreadPage.id);
+                    
+                    // リレーション先のページのステータスを「やる予定」に更新
+                    console.log('🔄 シナリオページのステータス更新を開始...');
+                    statusUpdateResult = await updateScenarioStatus(relatedThreadPage.id);
+                    
+                    if (statusUpdateResult.success) {
+                        console.log('✅ ステータス更新成功:', statusUpdateResult.message);
+                    } else {
+                        console.log('⚠️ ステータス更新失敗:', statusUpdateResult.message);
+                    }
                 }
 
                 console.log('📝 送信するNotionプロパティ:', JSON.stringify(notionProperties, null, 2));
@@ -664,6 +718,27 @@ client.on('interactionCreate', async interaction => {
                     successEmbed.addFields(
                         { name: '⚠️ リレーション', value: '対応するシナリオページが見つかりませんでした', inline: true }
                     );
+                }
+
+                // ステータス更新結果を表示
+                if (statusUpdateResult) {
+                    if (statusUpdateResult.success) {
+                        successEmbed.addFields(
+                            { 
+                                name: '🎯 ステータス更新', 
+                                value: '✅ シナリオを「やる予定」に更新しました', 
+                                inline: true 
+                            }
+                        );
+                    } else {
+                        successEmbed.addFields(
+                            { 
+                                name: '⚠️ ステータス更新', 
+                                value: `❌ ${statusUpdateResult.message}`, 
+                                inline: true 
+                            }
+                        );
+                    }
                 }
 
                 successEmbed.setTimestamp();
