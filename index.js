@@ -61,12 +61,12 @@ async function updateScenarioStatus(pageId) {
     try {
         console.log(`🔄 ページ ${pageId} のステータスを「やる予定」に更新中...`);
         
-        // ページを更新
+        // ページを更新（statusタイプとして更新）
         const updateResponse = await notion.pages.update({
             page_id: pageId,
             properties: {
                 'ステータス': {
-                    select: {
+                    status: {
                         name: 'やる予定'
                     }
                 }
@@ -570,9 +570,15 @@ client.on('interactionCreate', async interaction => {
                                         
                                         // 外部ファイルかNotionファイルかを判定
                                         if (firstFile.type === 'external' && firstFile.external && firstFile.external.url) {
-                                            imageUrl = firstFile.external.url;
-                                            console.log(`🖼️ 外部画像URL取得 (${propName}):`, imageUrl);
-                                            break;
+                                            const url = firstFile.external.url;
+                                            // 画像URLかどうかをチェック（直接の画像URLのみ許可）
+                                            if (url.match(/\.(jpg|jpeg|png|gif|webp|bmp|svg)(\?.*)?$/i)) {
+                                                imageUrl = url;
+                                                console.log(`🖼️ 外部画像URL取得 (${propName}):`, imageUrl);
+                                                break;
+                                            } else {
+                                                console.log(`⚠️ 画像以外のURL: ${url}`);
+                                            }
                                         } else if (firstFile.type === 'file' && firstFile.file && firstFile.file.url) {
                                             imageUrl = firstFile.file.url;
                                             console.log(`🖼️ Notion画像URL取得 (${propName}):`, imageUrl);
