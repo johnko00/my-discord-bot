@@ -158,7 +158,6 @@ async function syncForumToNotion(channelId) {
             const starterMessage = await thread.fetchStarterMessage();
             const messageContent = starterMessage ? starterMessage.content : '';
 
-            // ✅ メッセージ内容を全てログに出力
             if (messageContent) {
                 console.log(`💬 メッセージ内容の読み取り:\n${messageContent}`);
             } else {
