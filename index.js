@@ -89,7 +89,7 @@ async function getNotionPagesByUrl(databaseId, url) {
         const response = await notion.databases.query({
             database_id: databaseId,
             filter: {
-                property: "URL",
+                property: "スレッドURL", // URLプロパティ名に修正
                 rich_text: {
                     contains: url
                 }
@@ -147,6 +147,7 @@ async function syncForumToNotion(channelId) {
     for (const thread of newThreads) {
         try {
             const threadUrl = `https://discord.com/channels/${thread.guildId}/${thread.id}`;
+            
             const existingPages = await getNotionPagesByUrl(notionDatabaseId, threadUrl);
             if (existingPages.length > 0) {
                 console.log(`⚠️ スレッド "${thread.name}" はNotionにすでに存在します。スキップします。`);
@@ -161,12 +162,22 @@ async function syncForumToNotion(channelId) {
             const imageUrl = attachments.find(att => att.contentType.startsWith('image/'))?.url || null;
             const fileUrl = attachments.find(att => !att.contentType.startsWith('image/'))?.url || null;
             
+            // ✅ メッセージ内容から特定のURLを抽出
+            const boothOrPixivUrlRegex = /(https?:\/\/(?:www\.pixiv\.net|booth\.pm)\S+)/g;
+            const foundUrls = messageContent.match(boothOrPixivUrlRegex);
+            const extractedUrl = foundUrls ? foundUrls[0] : null;
+
             const notionProperties = {
                 "ステータス": { status: { name: "未着手" } },
-                "スレッド名": { title: [{ text: { content: thread.name } }] },
+                "名前": { title: [{ text: { content: thread.name } }] },
                 "作成日時": { date: { start: thread.createdAt.toISOString() } },
-                "URL": { url: threadUrl }
+                "スレッドURL": { url: threadUrl }
             };
+
+            // ✅ 抽出したURLが存在する場合のみプロパティに追加
+            if (extractedUrl) {
+                notionProperties["URL"] = { url: extractedUrl };
+            }
 
             const pageChildren = [];
 
@@ -363,15 +374,10 @@ client.on('interactionCreate', async interaction => {
                     await interaction.reply({ content: '❌ フォーム表示エラー: ' + modalError.message, flags: 64 });
                 }
             } else if (commandName === 'sync-forum') {
-                // deferReply()を最初に実行して、インタラクションを認識
                 await interaction.deferReply({ ephemeral: true });
-
                 const channelId = '1415707028911034489';
-                
                 try {
-                    // コアロジックを関数呼び出しに
                     const result = await syncForumToNotion(channelId);
-                    
                     const embed = new EmbedBuilder()
                         .setColor(result.added > 0 ? 0x00ff00 : 0xffff00)
                         .setTitle('📝 フォーラム同期完了')
@@ -382,12 +388,9 @@ client.on('interactionCreate', async interaction => {
                             { name: '❌ 失敗', value: result.failed.toString(), inline: true }
                         )
                         .setTimestamp();
-                    
-                    // deferReply()の後に editReply() を使用
                     await interaction.editReply({ embeds: [embed] });
                 } catch (fetchError) {
                     console.error('❌ スレッド取得エラー:', fetchError);
-                    // エラー発生時も editReply() を使用
                     await interaction.editReply('❌ スレッドの取得中にエラーが発生しました。ボットにチャンネルの閲覧権限があるか確認してください。');
                 }
             } else {
@@ -398,11 +401,9 @@ client.on('interactionCreate', async interaction => {
         } catch (error) {
             console.error('コマンド実行エラー:', error);
             if (interaction.replied) {
-                // すでにリプライ済みの場合、editReply()またはfollowUp()を試みる
                 try {
                     await interaction.editReply('❌ コマンドの実行中にエラーが発生しました。');
                 } catch {
-                    // editReplyもできない場合、followUpを試みる
                     await interaction.followUp({ content: '❌ コマンドの実行中にエラーが発生しました。', ephemeral: true });
                 }
             } else {
@@ -417,7 +418,6 @@ client.on('interactionCreate', async interaction => {
                 await interaction.deferReply();
                 const tableName = interaction.fields.getTextInputValue('table_name');
                 const sessionDate = interaction.fields.getTextInputValue('session_date');
-
                 function parseDate(dateInput) {
                     if (!dateInput || dateInput.trim() === '') { return null; }
                     const today = new Date();
@@ -441,13 +441,11 @@ client.on('interactionCreate', async interaction => {
                     }
                     return dateInput;
                 }
-
                 const parsedDate = parseDate(sessionDate);
                 if (parsedDate && !/^\d{4}-\d{2}-\d{2}$/.test(parsedDate)) {
                     await interaction.editReply(`❌ 日付の形式を認識できませんでした。`);
                     return;
                 }
-
                 const gmSelect = new StringSelectMenuBuilder().setCustomId('gm_select').setPlaceholder('🎮 GMを選択してください（複数選択可）').setMinValues(1).setMaxValues(4).addOptions(MEMBERS.map(member => ({ label: member.label, value: member.value, emoji: member.emoji })));
                 const plSelect = new StringSelectMenuBuilder().setCustomId('pl_select').setPlaceholder('👥 PLを選択してください（複数選択可・任意）').setMinValues(0).setMaxValues(4).addOptions(MEMBERS.map(member => ({ label: member.label, value: member.value, emoji: member.emoji })));
                 const gmSelectRow = new ActionRowBuilder().addComponents(gmSelect);
@@ -463,9 +461,7 @@ client.on('interactionCreate', async interaction => {
                         { name: '📅 開催日', value: parsedDate ? `${parsedDate}${sessionDate !== parsedDate ? ` (${sessionDate})` : ''}` : '未設定', inline: true }
                     )
                     .setFooter({ text: 'GMとPLを選択メニューで選んで「Notionに追加」をクリックしてください' });
-
                 global.tempNotionData = { userId: interaction.user.id, tableName, sessionDate: parsedDate, originalDate: sessionDate, selectedGm: [], selectedPl: [] };
-
                 await interaction.editReply({ embeds: [confirmEmbed], components: [gmSelectRow, plSelectRow, buttonRow] });
             } catch (error) {
                 console.error('Modal処理エラー:', error);
