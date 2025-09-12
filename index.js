@@ -173,15 +173,30 @@ async function syncForumToNotion(channelId) {
             const boothOrPixivUrlRegex = /(https?:\/\/(?:www\.pixiv\.net|booth\.pm)\S+)/;
             const extractedUrl = messageContent.match(boothOrPixivUrlRegex)?.[0] || null;
 
-            // ✅ OGP画像の取得ロジックを修正
-            // まずはOGP画像の取得を試みる
             if (extractedUrl) {
                 try {
                     console.log(`🔎 OGP取得を試行: ${extractedUrl}`);
-                    const { result: ogsResult } = await ogs({ url: extractedUrl });
-                    if (ogsResult.success && ogsResult.ogImage && ogsResult.ogImage.url) {
-                        imageUrl = ogsResult.ogImage.url;
-                        console.log(`🖼️ OGP画像を取得しました: ${imageUrl}`);
+                    
+                    // User-Agentヘッダーを追加
+                    const ogsOptions = {
+                        url: extractedUrl,
+                        headers: {
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                        }
+                    };
+
+                    const { result: ogsResult } = await ogs(ogsOptions);
+
+                    if (ogsResult.success) {
+                        console.log(`✅ OGP取得成功。タイトル: ${ogsResult.ogTitle}`);
+                        if (ogsResult.ogImage && ogsResult.ogImage.url) {
+                            imageUrl = ogsResult.ogImage.url;
+                            console.log(`🖼️ OGP画像URL: ${imageUrl}`);
+                        } else {
+                            console.log('⚠️ OGPに画像URLが見つかりませんでした。');
+                        }
+                    } else {
+                        console.warn(`❌ OGP取得失敗: ${ogsResult.error}`);
                     }
                 } catch (ogsError) {
                     console.warn(`⚠️ OGP取得エラー (${extractedUrl}): ${ogsError.message}`);
@@ -191,6 +206,9 @@ async function syncForumToNotion(channelId) {
             // OGP画像が取得できなかった場合、添付画像を代替として使う
             if (!imageUrl && attachments.length > 0) {
                 imageUrl = attachments.find(att => att.contentType.startsWith('image/'))?.url || null;
+                if (imageUrl) {
+                    console.log(`🖼️ 添付画像を代替として使用: ${imageUrl}`);
+                }
             }
 
             const notionProperties = {
