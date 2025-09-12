@@ -53,7 +53,7 @@ const commands = [
             {
                 name: 'channel',
                 description: '同期したいフォーラムチャンネル',
-                type: ChannelType.GuildForum,
+                type: ChannelType.GuildText, // Discord APIの制限に対応するため、チャンネルタイプ7（テキストチャンネル）に修正
                 required: true
             }
         ]
