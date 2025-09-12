@@ -53,7 +53,7 @@ const commands = [
             {
                 name: 'channel',
                 description: '同期したいフォーラムチャンネル',
-                type: 7, // Discord APIの制限に対応するため、チャンネルタイプ7（テキストチャンネル）に修正
+                type: 7,
                 required: true
             }
         ]
@@ -286,7 +286,7 @@ client.on('interactionCreate', async interaction => {
                     let skippedCount = 0;
                     let failedCount = 0;
 
-                    const notionDatabaseId = process.env.NOTION_FORUM_DATABASE_ID;
+                    const notionDatabaseId = process.env.NOTION_THREAD_DATABASE_ID; // ✅ ここを修正
 
                     for (const thread of newThreads) {
                         try {
