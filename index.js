@@ -167,8 +167,8 @@ async function syncForumToNotion(channelId) {
             
             const attachments = starterMessage ? starterMessage.attachments.toJSON() : [];
 
-            let imageUrl = attachments.find(att => att.contentType.startsWith('image/'))?.url || null;
-            const fileUrl = attachments.find(att => !att.contentType.startsWith('image/'))?.url || null;
+            let imageUrl = null;
+            const fileUrl = attachments.find(att => att.contentType.startsWith('image/'))?.url || null;
             
             const boothOrPixivUrlRegex = /(https?:\/\/(?:www\.pixiv\.net|booth\.pm)\S+)/;
             const extractedUrl = messageContent.match(boothOrPixivUrlRegex)?.[0] || null;
@@ -177,7 +177,6 @@ async function syncForumToNotion(channelId) {
                 try {
                     console.log(`🔎 OGP取得を試行: ${extractedUrl}`);
                     
-                    // User-Agentヘッダーを追加
                     const ogsOptions = {
                         url: extractedUrl,
                         headers: {
@@ -189,9 +188,13 @@ async function syncForumToNotion(channelId) {
 
                     if (ogsResult.success) {
                         console.log(`✅ OGP取得成功。タイトル: ${ogsResult.ogTitle}`);
+                        // og:image タグが見つからない場合、他の画像プロパティを試す
                         if (ogsResult.ogImage && ogsResult.ogImage.url) {
                             imageUrl = ogsResult.ogImage.url;
                             console.log(`🖼️ OGP画像URL: ${imageUrl}`);
+                        } else if (ogsResult.ogImage && Array.isArray(ogsResult.ogImage) && ogsResult.ogImage.length > 0) {
+                            imageUrl = ogsResult.ogImage[0].url;
+                            console.log(`🖼️ OGP配列から画像URLを取得: ${imageUrl}`);
                         } else {
                             console.log('⚠️ OGPに画像URLが見つかりませんでした。');
                         }
