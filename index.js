@@ -4,7 +4,7 @@ const { REST } = require('@discordjs/rest');
 const { Routes } = require('discord-api-types/v10');
 const { Client: NotionClient } = require('@notionhq/client');
 const express = require('express');
-const cron = require('node-cron'); // ✅ node-cron を読み込み
+const cron = require('node-cron');
 require('dotenv').config();
 
 // Notionクライアントの初期化
@@ -47,7 +47,6 @@ const commands = [
         name: 'add-notion',
         description: 'NotionにTRPG卓情報を追加します'
     },
-    // ✅ コマンドオプションを削除し、説明を更新
     {
         name: 'sync-forum',
         description: '手動でフォーラムの最新スレッドをNotionに同期します'
@@ -118,7 +117,7 @@ async function addDiscordThreadMessage(threadId, message) {
     }
 }
 
-// ✅ フォーラム同期のコアロジックを関数化
+// フォーラム同期のコアロジックを関数化
 async function syncForumToNotion(channelId) {
     const forumChannel = await client.channels.fetch(channelId);
     
@@ -212,7 +211,7 @@ app.get('/health', (req, res) => {
     res.json({ status: 'OK', timestamp: new Date().toISOString(), botReady: client.isReady() });
 });
 
-// ✅ GASからのトリガー用エンドポイント
+// GASからのトリガー用エンドポイント
 app.get('/trigger-sync', async (req, res) => {
     const secret = req.query.secret;
     if (secret !== process.env.WEBHOOK_SECRET) {
@@ -293,7 +292,7 @@ client.once('ready', async () => {
         console.error('❌ コマンド処理エラー:', error);
     }
 
-    // ✅ cronによる定期実行タスク
+    // cronによる定期実行タスク
     cron.schedule('0 1 * * *', async () => {
         console.log('⏰ スケジュールされたタスクを実行中: フォーラム同期...');
         const channelId = '1415707028911034489';
@@ -364,11 +363,13 @@ client.on('interactionCreate', async interaction => {
                     await interaction.reply({ content: '❌ フォーム表示エラー: ' + modalError.message, flags: 64 });
                 }
             } else if (commandName === 'sync-forum') {
+                // deferReply()を最初に実行して、インタラクションを認識
                 await interaction.deferReply({ ephemeral: true });
 
                 const channelId = '1415707028911034489';
                 
                 try {
+                    // コアロジックを関数呼び出しに
                     const result = await syncForumToNotion(channelId);
                     
                     const embed = new EmbedBuilder()
@@ -382,9 +383,11 @@ client.on('interactionCreate', async interaction => {
                         )
                         .setTimestamp();
                     
+                    // deferReply()の後に editReply() を使用
                     await interaction.editReply({ embeds: [embed] });
                 } catch (fetchError) {
                     console.error('❌ スレッド取得エラー:', fetchError);
+                    // エラー発生時も editReply() を使用
                     await interaction.editReply('❌ スレッドの取得中にエラーが発生しました。ボットにチャンネルの閲覧権限があるか確認してください。');
                 }
             } else {
@@ -395,7 +398,13 @@ client.on('interactionCreate', async interaction => {
         } catch (error) {
             console.error('コマンド実行エラー:', error);
             if (interaction.replied) {
-                await interaction.followUp('❌ コマンドの実行中にエラーが発生しました。');
+                // すでにリプライ済みの場合、editReply()またはfollowUp()を試みる
+                try {
+                    await interaction.editReply('❌ コマンドの実行中にエラーが発生しました。');
+                } catch {
+                    // editReplyもできない場合、followUpを試みる
+                    await interaction.followUp({ content: '❌ コマンドの実行中にエラーが発生しました。', ephemeral: true });
+                }
             } else {
                 await interaction.reply('❌ コマンドの実行中にエラーが発生しました。');
             }
