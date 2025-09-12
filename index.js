@@ -5,6 +5,7 @@ const { Routes } = require('discord-api-types/v10');
 const { Client: NotionClient } = require('@notionhq/client');
 const express = require('express');
 const cron = require('node-cron');
+const ogs = require('open-graph-scraper');
 require('dotenv').config();
 
 // Notionクライアントの初期化
@@ -166,12 +167,26 @@ async function syncForumToNotion(channelId) {
             
             const attachments = starterMessage ? starterMessage.attachments.toJSON() : [];
 
-            const imageUrl = attachments.find(att => att.contentType.startsWith('image/'))?.url || null;
+            let imageUrl = attachments.find(att => att.contentType.startsWith('image/'))?.url || null;
             const fileUrl = attachments.find(att => !att.contentType.startsWith('image/'))?.url || null;
             
+            // ✅ booth.pm または pixiv.net のURLのみを抽出する正規表現
             const boothOrPixivUrlRegex = /(https?:\/\/(?:www\.pixiv\.net|booth\.pm)\S+)/g;
             const foundUrls = messageContent.match(boothOrPixivUrlRegex);
             const extractedUrl = foundUrls ? foundUrls[0] : null;
+
+            // ✅ 抽出したURLが存在する場合のみOGP画像の取得を試みる
+            if (!imageUrl && extractedUrl) {
+                try {
+                    const { result: ogsResult } = await ogs({ url: extractedUrl });
+                    if (ogsResult.success && ogsResult.ogImage && ogsResult.ogImage.url) {
+                        imageUrl = ogsResult.ogImage.url;
+                        console.log(`🖼️ OGP画像を取得しました: ${imageUrl}`);
+                    }
+                } catch (ogsError) {
+                    console.warn(`⚠️ OGP取得エラー (${extractedUrl}): ${ogsError.message}`);
+                }
+            }
 
             const notionProperties = {
                 "ステータス": { status: { name: "未着手" } },
