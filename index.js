@@ -4,6 +4,7 @@ const { REST } = require('@discordjs/rest');
 const { Routes } = require('discord-api-types/v10');
 const { Client: NotionClient } = require('@notionhq/client');
 const express = require('express');
+const cron = require('node-cron'); // ✅ node-cron を読み込み
 require('dotenv').config();
 
 // Notionクライアントの初期化
@@ -46,17 +47,10 @@ const commands = [
         name: 'add-notion',
         description: 'NotionにTRPG卓情報を追加します'
     },
+    // ✅ コマンドオプションを削除し、説明を更新
     {
         name: 'sync-forum',
-        description: '指定したフォーラムの最新スレッドをNotionに同期します',
-        options: [
-            {
-                name: 'channel',
-                description: '同期したいフォーラムチャンネル',
-                type: 7,
-                required: true
-            }
-        ]
+        description: '手動でフォーラムの最新スレッドをNotionに同期します'
     }
 ];
 
@@ -72,7 +66,6 @@ const MEMBERS = [
 async function updateScenarioStatus(pageId) {
     try {
         console.log(`🔄 ページ ${pageId} のステータスを「やる予定」に更新中...`);
-        
         const updateResponse = await notion.pages.update({
             page_id: pageId,
             properties: {
@@ -83,10 +76,8 @@ async function updateScenarioStatus(pageId) {
                 }
             }
         });
-        
         console.log(`✅ ステータス更新成功: ${pageId}`);
         return { success: true, message: 'ステータスを「やる予定」に更新しました' };
-        
     } catch (error) {
         console.error('❌ ステータス更新エラー:', error);
         return { success: false, message: `ステータス更新エラー: ${error.message}` };
@@ -99,7 +90,7 @@ async function getNotionPagesByUrl(databaseId, url) {
         const response = await notion.databases.query({
             database_id: databaseId,
             filter: {
-                property: "URL", // プロパティ名はご自身のデータベースに合わせてください
+                property: "URL",
                 rich_text: {
                     contains: url
                 }
@@ -127,6 +118,87 @@ async function addDiscordThreadMessage(threadId, message) {
     }
 }
 
+// ✅ フォーラム同期のコアロジックを関数化
+async function syncForumToNotion(channelId) {
+    const forumChannel = await client.channels.fetch(channelId);
+    
+    if (!forumChannel || forumChannel.type !== ChannelType.GuildForum) {
+        console.error('❌ フォーラム同期エラー: 指定されたIDは有効なフォーラムチャンネルではありません。');
+        return { added: 0, skipped: 0, failed: 0 };
+    }
+    
+    console.log(`🔄 フォーラム ${forumChannel.name} のスレッドを取得中...`);
+    
+    const threads = await forumChannel.threads.fetch({ limit: 15, archived: false });
+    const newThreads = threads.threads.toJSON();
+    
+    if (newThreads.length === 0) {
+        console.log('⚠️ 最新のスレッドが見つかりませんでした。');
+        return { added: 0, skipped: 0, failed: 0 };
+    }
+    
+    console.log(`✅ ${newThreads.length}件のスレッドを取得しました。`);
+    
+    let addedCount = 0;
+    let skippedCount = 0;
+    let failedCount = 0;
+
+    const notionDatabaseId = process.env.NOTION_THREAD_DATABASE_ID;
+
+    for (const thread of newThreads) {
+        try {
+            const threadUrl = `https://discord.com/channels/${thread.guildId}/${thread.id}`;
+            const existingPages = await getNotionPagesByUrl(notionDatabaseId, threadUrl);
+            if (existingPages.length > 0) {
+                console.log(`⚠️ スレッド "${thread.name}" はNotionにすでに存在します。スキップします。`);
+                skippedCount++;
+                continue;
+            }
+            
+            const starterMessage = await thread.fetchStarterMessage();
+            const messageContent = starterMessage ? starterMessage.content : '';
+            const attachments = starterMessage ? starterMessage.attachments.toJSON() : [];
+
+            const imageUrl = attachments.find(att => att.contentType.startsWith('image/'))?.url || null;
+            const fileUrl = attachments.find(att => !att.contentType.startsWith('image/'))?.url || null;
+            
+            const notionProperties = {
+                "ステータス": { status: { name: "未着手" } },
+                "スレッド名": { title: [{ text: { content: thread.name } }] },
+                "作成日時": { date: { start: thread.createdAt.toISOString() } },
+                "URL": { url: threadUrl }
+            };
+
+            const pageChildren = [];
+
+            if (imageUrl) {
+                notionProperties["ファイル&メディア"] = { files: [{ external: { url: imageUrl }, name: 'thumbnail' }] };
+                pageChildren.push({ object: "block", type: "image", image: { type: "external", external: { url: imageUrl } } });
+            } else if (fileUrl) {
+                notionProperties["ファイル&メディア"] = { files: [{ external: { url: fileUrl }, name: 'file' }] };
+                pageChildren.push({ object: "block", type: "paragraph", paragraph: { rich_text: [{ type: "text", text: { content: "ファイル&メディア: " } }, { type: "text", text: { content: fileUrl, link: { url: fileUrl } } }] } });
+            }
+            pageChildren.unshift(
+                { object: "block", type: "heading_2", heading_2: { rich_text: [{ type: "text", text: { content: "基本情報" } }] } },
+                { object: "block", type: "paragraph", paragraph: { rich_text: [{ type: "text", text: { content: `スレッドURL: ` } }, { type: "text", text: { content: threadUrl, link: { url: threadUrl } } }] } }
+            );
+            if (messageContent) {
+                pageChildren.push({ object: "block", type: "quote", quote: { rich_text: [{ type: "text", text: { content: messageContent } }] } });
+            }
+            
+            const createResponse = await notion.pages.create({ parent: { database_id: notionDatabaseId }, properties: notionProperties, children: pageChildren });
+            addedCount++;
+            const notionPageUrl = `https://www.notion.so/${createResponse.id.replace(/-/g, '')}`;
+            const discordMessage = `✅ このスレッドの情報をNotionに同期しました！\n🔗 Notionページ: ${notionPageUrl}`;
+            await addDiscordThreadMessage(thread.id, discordMessage);
+        } catch (notionError) {
+            console.error(`❌ スレッド "${thread.name}" のNotion追加エラー:`, notionError);
+            failedCount++;
+        }
+    }
+    return { added: addedCount, skipped: skippedCount, failed: failedCount };
+}
+
 // Render用のWebサーバー（早期初期化）
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -138,6 +210,24 @@ app.get('/', (req, res) => {
 
 app.get('/health', (req, res) => {
     res.json({ status: 'OK', timestamp: new Date().toISOString(), botReady: client.isReady() });
+});
+
+// ✅ GASからのトリガー用エンドポイント
+app.get('/trigger-sync', async (req, res) => {
+    const secret = req.query.secret;
+    if (secret !== process.env.WEBHOOK_SECRET) {
+        console.warn('⚠️ 不正なトリガーリクエストを受信しました。');
+        return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    const channelId = '1415707028911034489';
+    try {
+        const result = await syncForumToNotion(channelId);
+        res.status(200).json({ status: 'Sync successful', ...result });
+    } catch (error) {
+        console.error('❌ GASからトリガーされたタスクの実行中にエラーが発生しました:', error);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
 });
 
 function keepAlive() {
@@ -202,6 +292,20 @@ client.once('ready', async () => {
     } catch (error) {
         console.error('❌ コマンド処理エラー:', error);
     }
+
+    // ✅ cronによる定期実行タスク
+    cron.schedule('0 1 * * *', async () => {
+        console.log('⏰ スケジュールされたタスクを実行中: フォーラム同期...');
+        const channelId = '1415707028911034489';
+        try {
+            const result = await syncForumToNotion(channelId);
+            console.log(`📝 定期タスク完了: 追加数 ${result.added}, スキップ数 ${result.skipped}, 失敗数 ${result.failed}`);
+        } catch (error) {
+            console.error('❌ スケジュールされたタスクの実行中にエラーが発生しました:', error);
+        }
+    }, {
+        timezone: "Asia/Tokyo"
+    });
 });
 
 client.on('reconnecting', () => { console.log('🔄 Discordに再接続中...'); });
@@ -262,168 +366,23 @@ client.on('interactionCreate', async interaction => {
             } else if (commandName === 'sync-forum') {
                 await interaction.deferReply({ ephemeral: true });
 
-                const forumChannel = interaction.options.getChannel('channel');
-
-                if (forumChannel.type !== ChannelType.GuildForum) {
-                    await interaction.editReply('❌ 指定されたチャンネルはフォーラムチャンネルではありません。');
-                    return;
-                }
-
+                const channelId = '1415707028911034489';
+                
                 try {
-                    console.log(`🔄 フォーラム ${forumChannel.name} のスレッドを取得中...`);
-
-                    const threads = await forumChannel.threads.fetch({ limit: 15, archived: false });
-                    const newThreads = threads.threads.toJSON();
-
-                    if (newThreads.length === 0) {
-                        await interaction.editReply('⚠️ 最新のスレッドが見つかりませんでした。');
-                        return;
-                    }
-
-                    console.log(`✅ ${newThreads.length}件のスレッドを取得しました。`);
+                    const result = await syncForumToNotion(channelId);
                     
-                    let addedCount = 0;
-                    let skippedCount = 0;
-                    let failedCount = 0;
-
-                    const notionDatabaseId = process.env.NOTION_THREAD_DATABASE_ID; // ✅ ここを修正
-
-                    for (const thread of newThreads) {
-                        try {
-                            const threadUrl = `https://discord.com/channels/${thread.guildId}/${thread.id}`;
-                            
-                            const existingPages = await getNotionPagesByUrl(notionDatabaseId, threadUrl);
-                            if (existingPages.length > 0) {
-                                console.log(`⚠️ スレッド "${thread.name}" はNotionにすでに存在します。スキップします。`);
-                                skippedCount++;
-                                continue;
-                            }
-                            
-                            const starterMessage = await thread.fetchStarterMessage();
-                            const messageContent = starterMessage ? starterMessage.content : '';
-                            const attachments = starterMessage ? starterMessage.attachments.toJSON() : [];
-
-                            const imageUrl = attachments.find(att => att.contentType.startsWith('image/'))?.url || null;
-                            const fileUrl = attachments.find(att => !att.contentType.startsWith('image/'))?.url || null;
-                            
-                            const notionProperties = {
-                                "ステータス": {
-                                    status: {
-                                        name: "未着手"
-                                    }
-                                },
-                                "スレッド名": {
-                                    title: [{ text: { content: thread.name } }]
-                                },
-                                "作成日時": {
-                                    date: {
-                                        start: thread.createdAt.toISOString()
-                                    }
-                                },
-                                "URL": {
-                                    url: threadUrl
-                                }
-                            };
-
-                            const pageChildren = [];
-
-                            if (imageUrl) {
-                                notionProperties["ファイル&メディア"] = {
-                                    files: [
-                                        {
-                                            external: { url: imageUrl },
-                                            name: 'thumbnail'
-                                        }
-                                    ]
-                                };
-                                pageChildren.push({
-                                    object: "block",
-                                    type: "image",
-                                    image: { type: "external", external: { url: imageUrl } }
-                                });
-                            } else if (fileUrl) {
-                                notionProperties["ファイル&メディア"] = {
-                                    files: [
-                                        {
-                                            external: { url: fileUrl },
-                                            name: 'file'
-                                        }
-                                    ]
-                                };
-                                pageChildren.push({
-                                    object: "block",
-                                    type: "paragraph",
-                                    paragraph: {
-                                        rich_text: [
-                                            { type: "text", text: { content: "ファイル&メディア: " } },
-                                            { type: "text", text: { content: fileUrl, link: { url: fileUrl } } }
-                                        ]
-                                    }
-                                });
-                            }
-
-                            pageChildren.unshift(
-                                {
-                                    object: "block",
-                                    type: "heading_2",
-                                    heading_2: {
-                                        rich_text: [{ type: "text", text: { content: "基本情報" } }]
-                                    }
-                                },
-                                {
-                                    object: "block",
-                                    type: "paragraph",
-                                    paragraph: {
-                                        rich_text: [
-                                            { type: "text", text: { content: `スレッドURL: ` } },
-                                            { type: "text", text: { content: threadUrl, link: { url: threadUrl } } }
-                                        ]
-                                    }
-                                }
-                            );
-
-                            if (messageContent) {
-                                pageChildren.push({
-                                    object: "block",
-                                    type: "quote",
-                                    quote: {
-                                        rich_text: [{ type: "text", text: { content: messageContent } }]
-                                    }
-                                });
-                            }
-                            
-                            const createResponse = await notion.pages.create({
-                                parent: { database_id: notionDatabaseId },
-                                properties: notionProperties,
-                                children: pageChildren
-                            });
-                            
-                            console.log(`✅ スレッド "${thread.name}" をNotionに追加しました: ${createResponse.url}`);
-                            addedCount++;
-                            
-                            const notionPageUrl = `https://www.notion.so/${createResponse.id.replace(/-/g, '')}`;
-                            const discordMessage = `✅ このスレッドの情報をNotionに同期しました！\n🔗 Notionページ: ${notionPageUrl}`;
-                            await addDiscordThreadMessage(thread.id, discordMessage);
-
-                        } catch (notionError) {
-                            console.error(`❌ スレッド "${thread.name}" のNotion追加エラー:`, notionError);
-                            failedCount++;
-                        }
-                    }
-
                     const embed = new EmbedBuilder()
-                        .setColor(addedCount > 0 ? 0x00ff00 : 0xffff00)
+                        .setColor(result.added > 0 ? 0x00ff00 : 0xffff00)
                         .setTitle('📝 フォーラム同期完了')
-                        .setDescription(`フォーラム **${forumChannel.name}** から最新スレッドの同期が完了しました。`)
+                        .setDescription(`手動同期が完了しました。`)
                         .addFields(
-                            { name: '✅ 新規追加', value: addedCount.toString(), inline: true },
-                            { name: '⏩ スキップ', value: skippedCount.toString(), inline: true },
-                            { name: '❌ 失敗', value: failedCount.toString(), inline: true }
+                            { name: '✅ 新規追加', value: result.added.toString(), inline: true },
+                            { name: '⏩ スキップ', value: result.skipped.toString(), inline: true },
+                            { name: '❌ 失敗', value: result.failed.toString(), inline: true }
                         )
                         .setTimestamp();
                     
                     await interaction.editReply({ embeds: [embed] });
-
                 } catch (fetchError) {
                     console.error('❌ スレッド取得エラー:', fetchError);
                     await interaction.editReply('❌ スレッドの取得中にエラーが発生しました。ボットにチャンネルの閲覧権限があるか確認してください。');
