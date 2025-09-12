@@ -89,7 +89,7 @@ async function getNotionPagesByUrl(databaseId, url) {
         const response = await notion.databases.query({
             database_id: databaseId,
             filter: {
-                property: "スレッドURL", // URLプロパティ名に修正
+                property: "スレッドURL",
                 rich_text: {
                     contains: url
                 }
@@ -157,12 +157,19 @@ async function syncForumToNotion(channelId) {
             
             const starterMessage = await thread.fetchStarterMessage();
             const messageContent = starterMessage ? starterMessage.content : '';
+
+            // ✅ メッセージ内容をログに出力
+            if (messageContent) {
+                console.log(`💬 メッセージ内容の読み取り: "${messageContent.substring(0, 50)}..."`);
+            } else {
+                console.log(`💬 メッセージ内容: 空欄または見つかりません`);
+            }
+            
             const attachments = starterMessage ? starterMessage.attachments.toJSON() : [];
 
             const imageUrl = attachments.find(att => att.contentType.startsWith('image/'))?.url || null;
             const fileUrl = attachments.find(att => !att.contentType.startsWith('image/'))?.url || null;
             
-            // ✅ メッセージ内容から特定のURLを抽出
             const boothOrPixivUrlRegex = /(https?:\/\/(?:www\.pixiv\.net|booth\.pm)\S+)/g;
             const foundUrls = messageContent.match(boothOrPixivUrlRegex);
             const extractedUrl = foundUrls ? foundUrls[0] : null;
@@ -174,7 +181,6 @@ async function syncForumToNotion(channelId) {
                 "スレッドURL": { url: threadUrl }
             };
 
-            // ✅ 抽出したURLが存在する場合のみプロパティに追加
             if (extractedUrl) {
                 notionProperties["URL"] = { url: extractedUrl };
             }
