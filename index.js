@@ -188,7 +188,6 @@ async function syncForumToNotion(channelId) {
 
                     if (ogsResult.success) {
                         console.log(`✅ OGP取得成功。タイトル: ${ogsResult.ogTitle}`);
-                        // og:image タグが見つからない場合、他の画像プロパティを試す
                         if (ogsResult.ogImage && ogsResult.ogImage.url) {
                             imageUrl = ogsResult.ogImage.url;
                             console.log(`🖼️ OGP画像URL: ${imageUrl}`);
@@ -206,7 +205,6 @@ async function syncForumToNotion(channelId) {
                 }
             }
 
-            // OGP画像が取得できなかった場合、添付画像を代替として使う
             if (!imageUrl && attachments.length > 0) {
                 imageUrl = attachments.find(att => att.contentType.startsWith('image/'))?.url || null;
                 if (imageUrl) {
@@ -245,7 +243,10 @@ async function syncForumToNotion(channelId) {
             const createResponse = await notion.pages.create({ parent: { database_id: notionDatabaseId }, properties: notionProperties, children: pageChildren });
             addedCount++;
             const notionPageUrl = `https://www.notion.so/${createResponse.id.replace(/-/g, '')}`;
-            const discordMessage = `✅ このスレッドの情報をNotionに同期しました！\n🔗 Notionページ: ${notionPageUrl}`;
+
+            // ✅ 通知メッセージの形式を修正
+            const discordMessage = `<@&1398577103359709196> Notionページが追加されました！\nページ名: ${thread.name}\nNotionURL: ${notionPageUrl}`;
+
             await addDiscordThreadMessage(thread.id, discordMessage);
         } catch (notionError) {
             console.error(`❌ スレッド "${thread.name}" のNotion追加エラー:`, notionError);
