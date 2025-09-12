@@ -170,14 +170,14 @@ async function syncForumToNotion(channelId) {
             let imageUrl = attachments.find(att => att.contentType.startsWith('image/'))?.url || null;
             const fileUrl = attachments.find(att => !att.contentType.startsWith('image/'))?.url || null;
             
-            // ✅ booth.pm または pixiv.net のURLのみを抽出する正規表現
-            const boothOrPixivUrlRegex = /(https?:\/\/(?:www\.pixiv\.net|booth\.pm)\S+)/g;
-            const foundUrls = messageContent.match(boothOrPixivUrlRegex);
-            const extractedUrl = foundUrls ? foundUrls[0] : null;
+            const boothOrPixivUrlRegex = /(https?:\/\/(?:www\.pixiv\.net|booth\.pm)\S+)/;
+            const extractedUrl = messageContent.match(boothOrPixivUrlRegex)?.[0] || null;
 
-            // ✅ 抽出したURLが存在する場合のみOGP画像の取得を試みる
-            if (!imageUrl && extractedUrl) {
+            // ✅ OGP画像の取得ロジックを修正
+            // まずはOGP画像の取得を試みる
+            if (extractedUrl) {
                 try {
+                    console.log(`🔎 OGP取得を試行: ${extractedUrl}`);
                     const { result: ogsResult } = await ogs({ url: extractedUrl });
                     if (ogsResult.success && ogsResult.ogImage && ogsResult.ogImage.url) {
                         imageUrl = ogsResult.ogImage.url;
@@ -186,6 +186,11 @@ async function syncForumToNotion(channelId) {
                 } catch (ogsError) {
                     console.warn(`⚠️ OGP取得エラー (${extractedUrl}): ${ogsError.message}`);
                 }
+            }
+
+            // OGP画像が取得できなかった場合、添付画像を代替として使う
+            if (!imageUrl && attachments.length > 0) {
+                imageUrl = attachments.find(att => att.contentType.startsWith('image/'))?.url || null;
             }
 
             const notionProperties = {
